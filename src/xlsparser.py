@@ -38,11 +38,18 @@ class TokenStream(object):
         self.currentIndex = 0
     
     def readToken(self):
-        if self.currentIndex >= len(self.tokens):
+        if self.eof():
             return None
         token = self.tokens[self.currentIndex]
         self.currentIndex += 1
         return token
+    
+    def eof(self):
+        if self.currentIndex >= len(self.tokens):
+            return True
+        else:
+            return False
+        
 
 class BaseParser(object):
     def parse(self, stream):
@@ -687,7 +694,7 @@ class CHARTSHEETCONTENT(BaseParser):
     #[HeaderFooter] [BACKGROUND] *Fbi *Fbi2 [ClrtClient] [PROTECTION] [Palette] [SXViewLink]
     #[PivotChartBits] [SBaseRef] [MsoDrawingGroup] OBJECTS Units CHARTFOMATS SERIESDATA
     #*WINDOW *CUSTOMVIEW [CodeName] [CRTMLFRT] EOF
-    PARSER = Group('chart', WriteProtect() << SheetExt() << WebPub() << Many('hf-pictures', HFPicture()) <<
+    PARSER = Group('chartsheet-content', WriteProtect() << SheetExt() << WebPub() << Many('hf-pictures', HFPicture()) <<
               Req(PAGESETUP()) << Req(PrintSize()) << HeaderFooter() << BACKGROUND() <<
               Many('fbi-list', Fbi()) << Many('fbi2-list', Fbi2()) <<
               ClrtClient() << PROTECTION() << Palette() << SXViewLink() << PivotChartBits() << 
@@ -710,16 +717,16 @@ class XlsParser(BaseParser):
         parsedList = []
         bofParser = Req(BOF())
         
-        while True:
+        while not stream.eof():
             bof = None
+            parser = None
             try:
                 bof = safeParse(bofParser, stream)
             except ParseException:
-                pass 
-            if bof is None: # we should break only in case stream is ended
-                break
-            bof.dumpData() # we need to dump data to make it parse the record
-            parser = PARSERS[bof.dataType]
+                pass
+            if not bof is None: 
+                bof.dumpData() # we need to dump data to make it parse the record
+                parser = PARSERS[bof.dataType]
             
             try:
                 if not parser is None:
