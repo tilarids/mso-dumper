@@ -701,6 +701,91 @@ class CHARTSHEETCONTENT(BaseParser):
               SBaseRef() << MsoDrawingGroup() << Req(OBJECTS()) << Req(Units()) << 
               Req(CHARTFORMATS()) << Req(SERIESDATA()) << Many('windows', WINDOW()) <<
               Many('custom-views', CUSTOMVIEW()) << CodeName() << CRTMLFRT() << Req(EOF()))
+
+class Uncalced(BaseParser): pass
+
+class Index(BaseParser): 
+    PARSER = Term(xlsrecord.Index)
+
+class CalcMode(BaseParser): 
+    PARSER = Term(xlsrecord.CalcMode)
+    
+class CalcCount(BaseParser):
+    PARSER = Term(xlsrecord.CalcCount)
+    
+class CalcRefMode(BaseParser): 
+    PARSER = Term(xlsrecord.CalcRefMode)
+    
+class CalcIter(BaseParser):
+    PARSER = Term(xlsrecord.CalcIter)
+    
+class CalcDelta(BaseParser):
+    PARSER = Term(xlsrecord.CalcDelta)
+    
+class CalcSaveRecalc(BaseParser): 
+    PARSER = Term(xlsrecord.CalcSaveRecalc)
+    
+class PrintRowCol(BaseParser): pass
+class PrintGrid(BaseParser): pass
+class GridSet(BaseParser): pass
+class Guts(BaseParser): pass
+class DefaultRowHeight(BaseParser): pass
+class WsBool(BaseParser): pass
+class Sync(BaseParser): pass
+class LPr(BaseParser): pass
+class HorizontalPageBreaks(BaseParser): pass
+class VerticalPageBreaks(BaseParser): pass
+
+class GLOBALS(BaseParser): 
+    #GLOBALS = CalcMode CalcCount CalcRefMode CalcIter CalcDelta CalcSaveRecalc PrintRowCol
+    #PrintGrid GridSet Guts DefaultRowHeight WsBool [Sync] [LPr] [HorizontalPageBreaks]
+    #[VerticalPageBreaks]
+    PARSER = Group('globals', Req(CalcMode()) << Req(CalcCount()) << Req(CalcRefMode()) << 
+                Req(CalcIter()) << Req(CalcDelta()) << Req(CalcSaveRecalc()) << 
+                Req(PrintRowCol()) << Req(PrintGrid()) << Req(GridSet()) << Req(Guts()) <<
+                Req(DefaultRowHeight()) << Req(WsBool()) << Sync() << LPr() << 
+                HorizontalPageBreaks() << VerticalPageBreaks())
+
+class BIGNAME(BaseParser): pass
+class COLUMNS(BaseParser): pass
+class SCENARIOS(BaseParser): pass
+class SORTANDFILTER(BaseParser): pass
+class CELLTABLE(BaseParser): pass
+class Note(BaseParser): pass
+class PIVOTVIEW(BaseParser): pass
+class DCON(BaseParser): pass
+class SORT(BaseParser): pass
+class DxGCol(BaseParser): pass
+class MergeCells(BaseParser): pass
+class LRng(BaseParser): pass
+class QUERYTABLE(BaseParser): pass
+class PHONETICINFO(BaseParser): pass
+class CONDFMTS(BaseParser): pass
+class HLINK(BaseParser): pass
+class DVAL(BaseParser): pass
+class CellWatch(BaseParser): pass
+class FEAT(BaseParser): pass
+class FEAT11(BaseParser): pass
+class RECORD12(BaseParser): pass
+
+class WORKSHEETCONTENT(BaseParser):
+    #WORKSHEETCONTENT = [Uncalced] Index GLOBALS PAGESETUP [HeaderFooter] [BACKGROUND]
+    #*BIGNAME [PROTECTION] COLUMNS [SCENARIOS] SORTANDFILTER Dimensions [CELLTABLE]
+    #OBJECTS *HFPicture *Note *PIVOTVIEW [DCON] 1*WINDOW *CUSTOMVIEW *2SORT [DxGCol]
+    #*MergeCells [LRng] *QUERYTABLE [PHONETICINFO] CONDFMTS *HLINK [DVAL] [CodeName]
+    #*WebPub *CellWatch [SheetExt] *FEAT *FEAT11 *RECORD12 EOF
+    PARSER = Group('worksheet-content', Uncalced() << Req(Index()) << Req(GLOBALS()) << 
+                Req(PAGESETUP()) << HeaderFooter() << Opt(BACKGROUND()) << Many('big-names', BIGNAME())
+                << Opt(PROTECTION()) << Req(COLUMNS) << Opt(SCENARIOS()) << Req(SORTANDFILTER()) <<
+                Req(Dimensions()) << Opt(CELLTABLE()) << Req(OBJECTS()) << Many('hfpictures', HFPicture()) <<
+                Many('notes', Note()) << Many('pivot-views', PIVOTVIEW()) << Opt(DCON()) <<
+                Many('windows', WINDOW(), min=1) << Many('custom-views', CUSTOMVIEW()) << 
+                Many('sort-list', SORT(), max=2) << DxGCol() << Many('merged-cells-list', MergeCells()) <<
+                LRng() << Many('query-tables', QUERYTABLE()) << Opt(PHONETICINFO()) << 
+                Req(CONDFMTS()) << Many('hlinks', HLINK()) << Opt(DVAL()) << CodeName() <<
+                Many('web-pubs', WebPub()) << Many('cell-watch-list', CellWatch()) << SheetExt() << 
+                Many('feat-list', FEAT()) << Many('feat11-list', FEAT11()) << Many('record12-list', RECORD12()) <<
+                Req(EOF()))
     
 class XlsParser(BaseParser):
     def __init__(self, tokens):
@@ -709,7 +794,7 @@ class XlsParser(BaseParser):
     def parse(self, stream):
         PARSERS = {0x0005: None, # WorkbookGlobal
                    0x0006: None,# Visual Basic module,
-                   0x0010: None,# Worksheet
+                   0x0010: ('worksheet', WORKSHEETCONTENT),# Worksheet
                    0x0020: ('chart', CHARTSHEETCONTENT),
                    0x0040: None,# Excel 4.0 macro sheet
                    0x0100: None,# Workspace file

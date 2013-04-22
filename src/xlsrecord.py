@@ -1655,6 +1655,112 @@ class Row(BaseRecordHandler):
         sh.setRowHeight(self.row, self.rowHeight)
 
 
+class Index(BaseRecordHandler):
+    def __parseBytes (self):
+        reserved  = self.readUnsignedInt(4)
+        self.rwMic = self.readUnsignedInt(4)
+        self.rwMac = self.readUnsignedInt(4)
+        self.ibXF = self.readUnsignedInt(4)
+        valsCount = (self.getSize() - self.getCurrentPos()) / 4
+        self.rwList = []
+        for x in xrange(valsCount):
+            self.rwList.append(self.readUnsignedInt(4))
+        
+    def parseBytes (self):
+        self.__parseBytes()
+
+        self.appendLine("rwMic: %d; rwMac: %d" % (self.rwMic, self.rwMac))
+        self.appendLine("ibxf: %d" % self.ibXF)
+        self.appendLine("rw vals count: %d" % len(self.rwList))
+        
+        for x in self.rwList:
+            self.appendLine("rw: %d" % x)
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('index', {'rw-mic': self.rwMic,
+                          'rw-mac': self.rwMac,
+                          'ibxf': self.ibXF},
+                          map(lambda x: ('rw', {'val': x}), self.rwList))
+
+class CalcMode(BaseRecordHandler):
+    def __parseBytes (self):
+        self.autoRecalc  = self.readSignedInt(2)
+        
+    def parseBytes (self):
+        self.__parseBytes()
+
+        self.appendLine("autoRecalc: %d" % (self.autoRecalc))
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('calc-mode', {'auto-recalc': self.autoRecalc})
+
+class CalcCount(BaseRecordHandler):
+    def __parseBytes (self):
+        self.iter  = self.readSignedInt(2)
+        
+    def parseBytes (self):
+        self.__parseBytes()
+
+        self.appendLine("iter: %d" % (self.iter))
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('calc-count', {'iter': self.iter})
+
+class CalcRefMode(BaseRecordHandler):
+    def __parseBytes (self):
+        self.refA1  = self.readUnsignedInt(2)
+        
+    def parseBytes (self):
+        self.__parseBytes()
+
+        self.appendLine("Is A1: %s" % self.getYesNo(self.refA1))
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('calc-refmode', {'ref-a1': self.refA1})
+
+class CalcIter(BaseRecordHandler):
+    def __parseBytes (self):
+        self.iter  = self.readUnsignedInt(2)
+        
+    def parseBytes (self):
+        self.__parseBytes()
+
+        self.appendLine("Enable iterative calculation: %s" % self.getYesNo(self.iter))
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('calc-iter', {'iter': self.iter})
+
+class CalcDelta(BaseRecordHandler):
+    def __parseBytes (self):
+        self.delta  = self.readDouble()
+        
+    def parseBytes (self):
+        self.__parseBytes()
+
+        self.appendLine("delta: %s" % str(self.delta))
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('calc-delta', {'delta': self.delta})
+
+class CalcSaveRecalc(BaseRecordHandler):
+    def __parseBytes (self):
+        self.saveRecalc  = self.readUnsignedInt(2)
+        
+    def parseBytes (self):
+        self.__parseBytes()
+
+        self.appendLine("Recalculate before save: %s" % self.getYesNo(self.saveRecalc))
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('calc-save-recalc', {'save-recalc': self.saveRecalc})
+
 class Name(BaseRecordHandler):
     """Internal defined name (aka Lbl)"""
 
