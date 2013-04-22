@@ -1233,6 +1233,12 @@ class LabelSST(BaseRecordHandler):
         cell.strID = self.strId
         sheet.setCell(self.col, self.row, cell)
 
+    def dumpData(self):
+        self.__parseBytes()
+        return ('label', {'row': self.row, 
+                          'col': self.col, 
+                          'xf-idx': self.xfIdx, 
+                          'str-id': self.strId})
 
 class MulRK(BaseRecordHandler):
     class RKRec(object):
@@ -1272,7 +1278,6 @@ class MulRK(BaseRecordHandler):
             sheet.setCell(col, self.row, cell)
 
 class MulBlank(BaseRecordHandler):
-
     def __parseBytes (self):
         self.row = self.readUnsignedInt(2)
         self.col1 = self.readUnsignedInt(2)
@@ -1293,6 +1298,13 @@ class MulBlank(BaseRecordHandler):
         for xfCell in self.xfCells:
             s += " %d"%xfCell
         self.appendMultiLine(s)
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('mul-blank', {'row': self.row, 
+                              'col-first': self.col1, 
+                              'col-last': self.col2},
+                             [('xf-idx', {'val': x} ) for x in self.xfCells])
 
 
 class Number(BaseRecordHandler):
@@ -1633,21 +1645,37 @@ class Blank(BaseRecordHandler):
 
 
 class DBCell(BaseRecordHandler):
-
-    def parseBytes (self):
-        rowRecOffset = self.readUnsignedInt(4)
-        self.appendLine("offset to first ROW record: %d"%rowRecOffset)
+    def __parseBytes (self):
+        self.rowRecOffset = self.readUnsignedInt(4)
+        self.cellOffsets = []
         while not self.isEndOfRecord():
-            cellOffset = self.readUnsignedInt(2)
-            self.appendLine("offset to CELL record: %d"%cellOffset)
-        return
+            self.cellOffsets.append(self.readUnsignedInt(2))
+
+    def parseBytes(self):
+        self.__parseBytes()
+        self.appendLine("offset to first ROW record: %d" % self.rowRecOffset)
+        for cellOffset in self.cellOffsets:
+            self.appendLine("offset to CELL record: %d" % cellOffset)
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('db-cell', {'row-offset': self.rowRecOffset},
+                           [('cell-offset', {'val': x} ) for x in self.cellOffsets])
 
 
 class DefColWidth(BaseRecordHandler):
 
+    def __parseBytes (self):
+        self.w = self.readUnsignedInt(2)
+        
+
     def parseBytes (self):
-        w = self.readUnsignedInt(2)
-        self.appendLine("default column width (in characters): %d"%w)
+        self.__parseBytes()
+        self.appendLine("default column width (in characters): %d" % self.w)
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('def-col-width', {'w': self.w})
 
 
 class DefRowHeight(BaseRecordHandler):
@@ -1672,6 +1700,13 @@ class DefRowHeight(BaseRecordHandler):
         else:
             self.appendLine("default height for empty rows: %d"%self.rowHeight)
 
+    def dumpData(self):
+        self.__parseBytes()
+        return ('default-row-height', {'unsynced': self.unsynced,
+                                       'dy-zero': self.dyZero,
+                                       'ex-asc': self.exAsc,
+                                       'ex-dsc': self.exDsc,
+                                       'row-height': self.rowHeight})
 
 class ColInfo(BaseRecordHandler):
 
@@ -1740,6 +1775,20 @@ class Row(BaseRecordHandler):
         if self.zeroHeight:
             sh.setRowHidden(self.row)
         sh.setRowHeight(self.row, self.rowHeight)
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('row', {'row': self.row,
+                        'col-mic': self.col1,
+                        'col-mac': self.col2,
+                        'row-height': self.rowHeight,
+                        'default-height': self.defaultHeight,
+                        'irw-mac': self.irwMac,
+                        'out-level': self.outLevel,
+                        'collapsed': self.collapsed,
+                        'zero-height': self.zeroHeight,
+                        'unsynced': self.unsynced,
+                        'ghost-dirty': self.ghostDirty})
 
 
 class Index(BaseRecordHandler):
@@ -1847,6 +1896,109 @@ class CalcSaveRecalc(BaseRecordHandler):
     def dumpData(self):
         self.__parseBytes()
         return ('calc-save-recalc', {'save-recalc': self.saveRecalc})
+
+class PrintRowCol(BaseRecordHandler):
+    def __parseBytes (self):
+        self.printRwCol  = self.readUnsignedInt(2)
+        
+    def parseBytes (self):
+        self.__parseBytes()
+
+        self.appendLine("Print Row and column headers: %s" % self.getYesNo(self.printRwCol))
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('print-row-col', {'print-rw-col': self.printRwCol})
+
+class PrintGrid(BaseRecordHandler):
+    def __parseBytes (self):
+        self.printGrid  = self.readUnsignedInt(2)
+        
+    def parseBytes (self):
+        self.__parseBytes()
+
+        self.appendLine("Print gridlines: %s" % self.getYesNo(self.printGrid))
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('print-grid', {'value': self.printGrid})
+
+class GridSet(BaseRecordHandler):
+    def __parseBytes (self):
+        self.gridset  = self.readUnsignedInt(2)
+        
+    def parseBytes (self):
+        self.__parseBytes()
+
+        self.appendLine("Gridset (reserved, must be 1): %s" % self.gridset)
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('grid-set', {'value': self.gridset})
+
+class Guts(BaseRecordHandler):
+    def __parseBytes (self):
+        self.unused1  = self.readUnsignedInt(2)
+        self.unused2  = self.readUnsignedInt(2)
+        self.iLevelRwMac = self.readUnsignedInt(2)
+        self.iLevelColMac = self.readUnsignedInt(2)
+        
+    def parseBytes (self):
+        self.__parseBytes()
+
+        self.appendLine("Unused 1: %s" % self.unused1)
+        self.appendLine("Unused 2: %s" % self.unused2)
+        self.appendLine("maximum outline level (1) for the row gutter: %s" % 0 if self.iLevelRwMac == 0 else self.iLevelRwMac - 1)
+        self.appendLine("maximum outline level (1) for the column gutter: %s" % 0 if self.iLevelColMac == 0 else self.iLevelColMac - 1)
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('guts', {'unused1': self.unused1,
+                         'unused2': self.unused1,
+                         'level-rw-mac': self.iLevelRwMac,
+                         'level-col-mac': self.iLevelColMac})
+
+class WsBool(BaseRecordHandler):
+    def __parseBytes (self):
+        flags = self.readUnsignedInt(2)
+        self.showAutoBreaks =   flags & 0x0001
+        self.dialog =           flags & 0x0010
+        self.applyStyles =      flags & 0x0020
+        self.rowSumsBelow =     flags & 0x0040
+        self.colSumsRight =     flags & 0x0080
+        self.fitToPage =        flags & 0x0100
+        self.syncHoriz =        flags & 0x1000
+        self.syncVert =         flags & 0x2000
+        self.altExprEval =      flags & 0x4000
+        self.altFormulaEntry =  flags & 0x8000
+        
+    def parseBytes (self):
+        self.__parseBytes()
+
+        self.appendLine("Show automatically inserted page breaks: %s" % self.getYesNo(self.showAutoBreaks))
+        self.appendLine("Is dialog sheet: %s" % self.getYesNo(self.dialog))
+        self.appendLine("Apply style in an outline when an outline is applied: %s" % self.getYesNo(self.applyStyles))
+        self.appendLine("Summary rows should appear below an outline's detail rows: %s" % self.getYesNo(self.rowSumsBelow))
+        self.appendLine("Summary columns appear to the left, if the sheet is displayed left-to-right, or appear to the right, if the sheet is displayed right-to-left: %s" % self.getYesNo(self.colSumsRight))
+        self.appendLine("Fit the printable contents to a single page when printing this sheet: %s" % self.getYesNo(self.fitToPage))
+        self.appendLine("Horizontal scrolling is synchronized across multiple windows displaying this sheet: %s" % self.getYesNo(self.syncHoriz))
+        self.appendLine("Vertical scrolling is synchronized across multiple windows displaying this sheet: %s" % self.getYesNo(self.syncVert))
+        self.appendLine("Sheet uses transition formula evaluation: %s" % self.getYesNo(self.altExprEval))
+        self.appendLine("Sheet uses transition formula entry: %s" % self.getYesNo(self.altFormulaEntry))
+
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('ws-bool', {'show-auto-breaks': self.showAutoBreaks, 
+                            'dialog': self.dialog, 
+                            'apply-styles': self.applyStyles, 
+                            'row-sums-below': self.rowSumsBelow, 
+                            'col-sums-right': self.colSumsRight, 
+                            'fit-to-page': self.fitToPage, 
+                            'sync-horiz': self.syncHoriz, 
+                            'sync-vert': self.syncVert, 
+                            'alt-expr-eval': self.altExprEval, 
+                            'altformula-entry': self.altFormulaEntry})
 
 class Name(BaseRecordHandler):
     """Internal defined name (aka Lbl)"""

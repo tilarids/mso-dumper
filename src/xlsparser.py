@@ -62,7 +62,7 @@ class BaseParser(object):
     def __str__(self):
         parser = getattr(self, 'PARSER', None)
         if parser is None:
-            return "NONIMPL"
+            return "NONIMPL(%s)" % self.__class__
         else:
             return str(parser)
         
@@ -725,12 +725,24 @@ class CalcDelta(BaseParser):
 class CalcSaveRecalc(BaseParser): 
     PARSER = Term(xlsrecord.CalcSaveRecalc)
     
-class PrintRowCol(BaseParser): pass
-class PrintGrid(BaseParser): pass
-class GridSet(BaseParser): pass
-class Guts(BaseParser): pass
-class DefaultRowHeight(BaseParser): pass
-class WsBool(BaseParser): pass
+class PrintRowCol(BaseParser):
+    PARSER = Term(xlsrecord.PrintRowCol)
+
+class PrintGrid(BaseParser): 
+    PARSER = Term(xlsrecord.PrintGrid)
+
+class GridSet(BaseParser): 
+    PARSER = Term(xlsrecord.GridSet)
+
+class Guts(BaseParser): 
+    PARSER = Term(xlsrecord.Guts)
+
+class DefaultRowHeight(BaseParser):
+    PARSER = Term(xlsrecord.DefRowHeight)
+
+class WsBool(BaseParser): 
+    PARSER = Term(xlsrecord.WsBool)
+
 class Sync(BaseParser): pass
 class LPr(BaseParser): pass
 class HorizontalPageBreaks(BaseParser): pass
@@ -740,17 +752,68 @@ class GLOBALS(BaseParser):
     #GLOBALS = CalcMode CalcCount CalcRefMode CalcIter CalcDelta CalcSaveRecalc PrintRowCol
     #PrintGrid GridSet Guts DefaultRowHeight WsBool [Sync] [LPr] [HorizontalPageBreaks]
     #[VerticalPageBreaks]
-    PARSER = Group('globals', Req(CalcMode()) << Req(CalcCount()) << Req(CalcRefMode()) << 
+    PARSER = Group('globals', Req(CalcMode() << Req(CalcCount()) << Req(CalcRefMode()) << 
                 Req(CalcIter()) << Req(CalcDelta()) << Req(CalcSaveRecalc()) << 
                 Req(PrintRowCol()) << Req(PrintGrid()) << Req(GridSet()) << Req(Guts()) <<
                 Req(DefaultRowHeight()) << Req(WsBool()) << Sync() << LPr() << 
-                HorizontalPageBreaks() << VerticalPageBreaks())
+                HorizontalPageBreaks() << VerticalPageBreaks()))
 
 class BIGNAME(BaseParser): pass
-class COLUMNS(BaseParser): pass
+
+class DefColWidth(BaseParser):
+    PARSER = Term(xlsrecord.DefColWidth)
+
+class ColInfo(BaseParser): pass
+
+class COLUMNS(BaseParser):
+    # COLUMNS = DefColWidth *255ColInfo
+    PARSER = Group('columns', Req(DefColWidth()) << Many('columns-list', ColInfo(), max=255))
+
 class SCENARIOS(BaseParser): pass
-class SORTANDFILTER(BaseParser): pass
-class CELLTABLE(BaseParser): pass
+
+class Sort(BaseParser): pass
+class SORTDATA12(BaseParser): pass
+class FilterMode(BaseParser): pass
+class DropDownObjIds(BaseParser): pass
+class AUTOFILTER(BaseParser): pass
+
+class SORTANDFILTER(BaseParser): 
+    # SORTANDFILTER = [Sort] [SORTDATA12] [FilterMode] [DropDownObjIds] [AUTOFILTER]
+    PARSER = Group('sort-and-filter', Sort() << Opt(SORTDATA12()) << FilterMode() << DropDownObjIds() << Opt(AUTOFILTER()))
+
+class Row(BaseParser):
+    PARSER = Term(xlsrecord.Row)
+
+class FORMULA(BaseParser): pass
+class Blank(BaseParser): pass
+
+class MulBlank(BaseParser):
+    PARSER = Term(xlsrecord.MulBlank)
+
+class Rk(BaseParser): pass
+class MulRk(BaseParser): pass
+class BoolErr(BaseParser): pass
+class Number(BaseParser): pass
+
+class LabelSst(BaseParser):
+    PARSER = Term(xlsrecord.LabelSST)
+
+class CELL(BaseParser): 
+    #CELL = FORMULA / Blank / MulBlank / RK / MulRk / BoolErr / Number / LabelSst
+    PARSER = OneOf(FORMULA(), Blank(), MulBlank(), Rk(), MulRk(), BoolErr(), Number(), LabelSst())
+
+class DBCell(BaseParser):
+    PARSER = Term(xlsrecord.DBCell)
+
+class EntExU2(BaseParser): pass
+
+class CELLTABLE(BaseParser): 
+    # CELLTABLE = 1*(1*Row *CELL 1*DBCell) *EntExU2
+    PARSER = Group('cell-table', Many('rows-groups', 
+                                      Group('row-group', 
+                                            Many('rows', Row(), min=1) << Many('cells', CELL()) << Many('dbcells', DBCell(), min=1)), 
+                                      min=1) << Many('entexu2-list', EntExU2()))
+
 class Note(BaseParser): pass
 class PIVOTVIEW(BaseParser): pass
 class DCON(BaseParser): pass
@@ -776,7 +839,7 @@ class WORKSHEETCONTENT(BaseParser):
     #*WebPub *CellWatch [SheetExt] *FEAT *FEAT11 *RECORD12 EOF
     PARSER = Group('worksheet-content', Uncalced() << Req(Index()) << Req(GLOBALS()) << 
                 Req(PAGESETUP()) << HeaderFooter() << Opt(BACKGROUND()) << Many('big-names', BIGNAME())
-                << Opt(PROTECTION()) << Req(COLUMNS) << Opt(SCENARIOS()) << Req(SORTANDFILTER()) <<
+                << Opt(PROTECTION()) << Req(COLUMNS()) << Opt(SCENARIOS()) << Req(SORTANDFILTER()) <<
                 Req(Dimensions()) << Opt(CELLTABLE()) << Req(OBJECTS()) << Many('hfpictures', HFPicture()) <<
                 Many('notes', Note()) << Many('pivot-views', PIVOTVIEW()) << Opt(DCON()) <<
                 Many('windows', WINDOW(), min=1) << Many('custom-views', CUSTOMVIEW()) << 
