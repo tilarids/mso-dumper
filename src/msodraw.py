@@ -121,7 +121,11 @@ class RecordHeader:
         recHdl.appendLine('<recLen value="0x%1.1X"/>' % self.recLen)
         recHdl.appendLine('</rh>')
 
-
+    def dumpData(self):
+        return ('record-header', {'rec-ver': self.recVer,
+                                  'rec-instance': self.recInstance,
+                                  'rec-type': self.recType,
+                                  'rec-len': self.recLen})
 class ColorRef:
     def __init__ (self, byte):
         self.red   = (byte & 0x000000FF)
@@ -883,6 +887,22 @@ class MSODrawHandler(globals.ByteStream):
 
     def appendLine(self, line):
         self.parent.appendLine(line)
+
+    def dumpData(self):
+        children = []
+        while not self.isEndOfRecord():
+            rh = RecordHeader(self)
+            if False:#recData.has_key(rh.recType):
+                obj = recData[rh.recType](self)
+                children.append(('record', {}, [rh.dumpData(), obj.dumpData()]))
+            else:
+                # TODO: fix
+                bytes = self.readBytes(min(rh.recLen, self.size - self.pos))
+                children.append(('unknown-object', 
+                                 {}, 
+                                 [rh.dumpData(), 
+                                  ('bytes', {'data': globals.getRawBytes(bytes, True, False)})]))
+        return ('mso-drawing', {}, children)
 
 
 class DggContainer(MSODrawHandler):

@@ -253,7 +253,9 @@ class BottomMargin(MarginBaseParser): pass
 class Pls(BaseParser): 
     PARSER = Term(xlsrecord.Pls)
 
-class Continue(BaseParser): pass        
+class Continue(BaseParser):
+    PARSER = Term(xlsrecord.Continue)
+
 
 class Setup(BaseParser):
     PARSER = Term(xlsrecord.Setup)
@@ -288,9 +290,26 @@ class SBaseRef(BaseParser): pass
 class MsoDrawingGroup(BaseParser): pass        
 
 
-class MSODRAWING(BaseParser): pass        
-class TEXTOBJECT(BaseParser): pass        
-class OBJ(BaseParser): pass        
+class MSODRAWING(BaseParser):
+    PARSER = Term(xlsrecord.MSODrawing)
+
+class TxO(BaseParser):
+    PARSER = Term(xlsrecord.TxO)
+
+
+class TEXTOBJECT(BaseParser): 
+    # TEXTOBJECT = TxO *Continue
+    PARSER = Group('text-object-group', Req(TxO()) << Many('conitnues', Continue()))
+
+class Obj(BaseParser):
+    PARSER = Term(xlsrecord.Obj)
+
+class CHART(BaseParser): pass        
+
+class OBJ(BaseParser):
+    # OBJ = Obj *Continue *CHART
+    PARSER = Group('obj-group', Req(Obj()) << Many('conitnues', Continue()) << Many('charts', CHART()))
+
 class MsoDrawingSelection(BaseParser): pass        
 
 class OBJECTS(BaseParser):
@@ -680,7 +699,21 @@ class SERIESDATA(BaseParser):
                                                           min=3, max=3))
 
 class CodeName(BaseParser): pass
-class WINDOW(BaseParser): pass
+
+class Window2(BaseParser):
+    PARSER = Term(xlsrecord.Window2)
+
+class PLV(BaseParser): pass
+class Scl(BaseParser): pass
+class Pane(BaseParser): pass
+class Selection(BaseParser): 
+    PARSER = Term(xlsrecord.Selection)
+
+
+class WINDOW(BaseParser):
+    # WINDOW = Window2 [PLV] [Scl] [Pane] *Selection
+    PARSER = Group('window', Req(Window2()) << Opt(PLV()) << Scl() << Pane() << Many('selections', Selection()))
+
 class CUSTOMVIEW(BaseParser): pass
 
 class EOF(BaseParser):
@@ -814,16 +847,36 @@ class CELLTABLE(BaseParser):
                                             Many('rows', Row(), min=1) << Many('cells', CELL()) << Many('dbcells', DBCell(), min=1)), 
                                       min=1) << Many('entexu2-list', EntExU2()))
 
-class Note(BaseParser): pass
+class NoteSh(BaseParser):
+    PARSER = Term(xlsrecord.NoteSh)
+
 class PIVOTVIEW(BaseParser): pass
 class DCON(BaseParser): pass
 class SORT(BaseParser): pass
 class DxGCol(BaseParser): pass
-class MergeCells(BaseParser): pass
+
+class MergeCells(BaseParser):
+    PARSER = Term(xlsrecord.MergeCells)
+
 class LRng(BaseParser): pass
 class QUERYTABLE(BaseParser): pass
-class PHONETICINFO(BaseParser): pass
-class CONDFMTS(BaseParser): pass
+
+class PhoneticInfo(BaseParser):
+    PARSER = Term(xlsrecord.PhoneticInfo)
+
+class PHONETICINFO(BaseParser):
+    # PHONETICINFO = PhoneticInfo *Continue
+    PARSER = Group('phonetic-info-group', Req(PhoneticInfo()) << Many('conitnues', Continue()))
+
+class CONDFMT(BaseParser): pass
+class CONDFMT12(BaseParser): pass
+class CFEx(BaseParser): pass
+class CF12(BaseParser): pass
+
+class CONDFMTS(BaseParser):
+    # CONDFMTS = *(CONDFMT / CONDFMT12) *(CFEx [CF12])
+    PARSER = Group('condfmts', Many('condfmt-list', OneOf(CONDFMT(), CONDFMT12())) << Many('cf-list', Req(CFEx()) << CF12()))
+
 class HLINK(BaseParser): pass
 class DVAL(BaseParser): pass
 class CellWatch(BaseParser): pass
@@ -841,7 +894,7 @@ class WORKSHEETCONTENT(BaseParser):
                 Req(PAGESETUP()) << HeaderFooter() << Opt(BACKGROUND()) << Many('big-names', BIGNAME())
                 << Opt(PROTECTION()) << Req(COLUMNS()) << Opt(SCENARIOS()) << Req(SORTANDFILTER()) <<
                 Req(Dimensions()) << Opt(CELLTABLE()) << Req(OBJECTS()) << Many('hfpictures', HFPicture()) <<
-                Many('notes', Note()) << Many('pivot-views', PIVOTVIEW()) << Opt(DCON()) <<
+                Many('notes', NoteSh()) << Many('pivot-views', PIVOTVIEW()) << Opt(DCON()) <<
                 Many('windows', WINDOW(), min=1) << Many('custom-views', CUSTOMVIEW()) << 
                 Many('sort-list', SORT(), max=2) << DxGCol() << Many('merged-cells-list', MergeCells()) <<
                 LRng() << Many('query-tables', QUERYTABLE()) << Opt(PHONETICINFO()) << 

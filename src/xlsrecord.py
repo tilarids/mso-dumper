@@ -51,15 +51,45 @@ class RefU(object):
         rge.lastCol = self.col2
         return rge.toString()
 
+    def __str__(self):
+        return self.toString()
+
+    def dumpData(self):
+        return ('refu', {'row1': self.row1,
+                         'row2': self.row2,
+                         'col1': self.col1,
+                         'col2': self.col2})
 
 class Ref8U(object):
-
     def __init__ (self, strm):
         self.row1 = strm.readUnsignedInt(2)
         self.row2 = strm.readUnsignedInt(2)
         self.col1 = strm.readUnsignedInt(2)
         self.col2 = strm.readUnsignedInt(2)
 
+    def toString (self):
+        rge = formula.CellRange()
+        rge.firstRow = self.row1
+        rge.firstCol = self.col1
+        rge.lastRow = self.row2
+        rge.lastCol = self.col2
+        return rge.toString()
+
+    def __str__(self):
+        return self.toString()
+
+    def dumpData(self):
+        return ('ref8u', {'row1': self.row1,
+                          'row2': self.row2,
+                          'col1': self.col1,
+                          'col2': self.col2})
+
+class Ref8(Ref8U): # TODO: investigate and make different implementation for it if it's necessary
+    def dumpData(self):
+        return ('ref8', {'row1': self.row1,
+                         'row2': self.row2,
+                         'col1': self.col1,
+                         'col2': self.col2})
 
 class RKAuxData(object):
     """Store auxiliary data for RK value"""
@@ -1393,7 +1423,8 @@ class Obj(BaseRecordHandler):
                 return Obj.Cmo.Types[typeID]
             return "(unknown) (0x%2.2X)"%typeID
 
-    def parseBytes (self):
+    def __parseBytes(self):
+        self.fields = []
         while not self.isEndOfRecord():
             fieldType = self.readUnsignedInt(2)
             fieldSize = self.readUnsignedInt(2)
@@ -1402,12 +1433,12 @@ class Obj(BaseRecordHandler):
                 return
 
             if fieldType == Obj.ftCmo:
-                self.parseCmo(fieldSize)
+                self.fields.append((fieldType, fieldSize, self.__parseCmo(fieldSize)))
             else:
                 fieldBytes = self.readBytes(fieldSize)
-                self.appendLine("field 0x%2.2X: %s"%(fieldType, globals.getRawBytes(fieldBytes, True, False)))
+                self.fields.append((fieldType, fieldSize, fieldBytes))
 
-    def parseCmo (self, size):
+    def __parseCmo (self, size):
         if size != 18:
             # size of Cmo must be 18.  Something is wrong here.
             self.readBytes(size)
@@ -1423,9 +1454,6 @@ class Obj(BaseRecordHandler):
         unused2 = self.readUnsignedInt(4)
         unused3 = self.readUnsignedInt(4)
 
-        self.appendLine("common object: ")
-        self.appendLine("  type: %s (0x%2.2X)"%(Obj.Cmo.getType(objType), objType))
-        self.appendLine("  object ID: %d"%objID)
 
         # 0    0001h fLocked    =1 if the object is locked when the sheet is protected
         # 3-1  000Eh (Reserved) Reserved; must be 0 (zero)
@@ -1450,11 +1478,47 @@ class Obj(BaseRecordHandler):
         recalcObjAlways = (flag & 0x1000) != 0 # M
         autoFill        = (flag & 0x2000) != 0 # N
         autoLine        = (flag & 0x4000) != 0 # O
-        self.appendLineBoolean("  locked", locked)
-        self.appendLineBoolean("  default size", defaultSize)
-        self.appendLineBoolean("  printable", printable)
-        self.appendLineBoolean("  automatic fill style", autoFill)
-        self.appendLineBoolean("  automatic line style", autoLine)
+
+        return {'obj-type': objType,
+                'obj-id': objID,
+                'locked': locked,
+                'default-size': defaultSize,
+                'published': published,
+                'printable': printable,
+                'disabled': disabled,
+                'ui-obj': UIObj,
+                'recalc-obj': recalcObj,
+                'recalc-obj-always': recalcObjAlways,
+                'auto-fill': autoFill,
+                'auto-line': autoLine}
+
+    def parseBytes(self):
+        self.__parseBytes()
+        for fieldType, fieldSize, fieldData in self.fields:
+            if fieldType == Obj.ftCmo:
+                self.appendLine("common object: ")
+                self.appendLine("  type: %s (0x%2.2X)"%(Obj.Cmo.getType(fieldData['obj-type']), fieldData['obj-type']))
+                self.appendLine("  object ID: %d"%fieldData['obj-id'])
+                self.appendLineBoolean("  locked", fieldData['locked'])
+                self.appendLineBoolean("  default size", fieldData['default-size'])
+                self.appendLineBoolean("  printable", fieldData['printable'])
+                self.appendLineBoolean("  automatic fill style", fieldData['auto-fill'])
+                self.appendLineBoolean("  automatic line style", fieldData['auto-line'])
+
+            else:
+                self.appendLine("field 0x%2.2X: %s"%(fieldType, globals.getRawBytes(fieldData, True, False)))
+
+    def dumpData(self):
+        self.__parseBytes()
+        children = []
+        for fieldType, fieldSize, fieldData in self.fields:
+            if fieldType == Obj.ftCmo:
+                children.append(('cmo-field', fieldData))
+            else:
+                children.append(('field', {'field-type': fieldType,
+                                           'field-size': fieldSize,
+                                           'field-bytes': globals.getRawBytes(fieldData, True, False)}))
+        return ('obj', {}, children)
 
 class PlotGrowth(BaseRecordHandler):
 
@@ -2000,6 +2064,125 @@ class WsBool(BaseRecordHandler):
                             'alt-expr-eval': self.altExprEval, 
                             'altformula-entry': self.altFormulaEntry})
 
+class TxO(BaseRecordHandler):
+    def __parseBytes (self):
+        flag  = self.readUnsignedInt(2)
+        self.hAlignment = flag & (0x0002 | 0x004 | 0x008)
+        self.vAlignment = flag & (0x0010 | 0x020 | 0x040)
+        self.lockText =   flag & 0x0200
+        self.justLast =   flag & 0x4000
+        self.secretEdit = flag & 0x8000
+
+        self.rot  = self.readUnsignedInt(2)
+
+        # reserved4 = self.readUnsignedInt(2)
+        # reserved5 = self.readUnsignedInt(4)
+        
+    def parseBytes (self):
+        self.__parseBytes()
+
+        self.appendLine("Horizontal alignment: %s" % self.hAlignment)
+        self.appendLine("Vertical alignment: %s" % self.vAlignment)
+        self.appendLine("rot: %s" % self.rot)
+        self.appendLine('MAKESURETOFIXTHIS!!! THISISNOTTHEWHOLEOBJECT!')
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('txo', {'halignment': self.hAlignment,
+                        'valignment': self.vAlignment,
+                        'rot': self.rot,
+                        'MAKESURETOFIXTHIS!!!': 'THISISNOTTHEWHOLEOBJECT'})
+
+class Continue(BaseRecordHandler):
+    def __parseBytes (self):
+        self.data = globals.getRawBytes(self.readRemainingBytes(), True, False)
+        
+    def parseBytes (self):
+        self.__parseBytes()
+        self.appendLine("Continue data: %s" % self.data)
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('continue', {'data': self.data})
+
+class NoteSh(BaseRecordHandler):
+    def __parseBytes (self):
+        self.row        = self.readUnsignedInt(2)
+        self.col        = self.readUnsignedInt(2)
+        flag            = self.readUnsignedInt(2)
+        self.show       = flag & 0x0002;
+        self.rwHidden   = flag & 0x0080;
+        self.colHidden  = flag & 0x0080;
+        self.idObj      = self.readUnsignedInt(2)
+        self.author     = self.readXLUnicodeString()
+        
+    def parseBytes (self):
+        self.__parseBytes()
+        self.appendLine("Row: %s" % self.row)
+        self.appendLine("Column: %s" % self.col)
+        self.appendLine("Comment is shown at all times: %s" % self.getYesNo(self.show))
+        self.appendLine("Row specified is hidden: %s" % self.getYesNo(self.rwHidden))
+        self.appendLine("Column specified is hidden: %s" % self.getYesNo(self.colHidden))
+        self.appendLine("Author: %s" % self.getYesNo(self.author))
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('note-sh', {'row': self.row,
+                            'col': self.col,
+                            'show': self.show,
+                            'rw-hidden': self.rwHidden,
+                            'col-hidden': self.colHidden,
+                            'id-obj': self.idObj,
+                            'author': self.author})
+
+class Selection(BaseRecordHandler):
+    def __parseBytes (self):
+        self.pnn  = self.readUnsignedInt(1)
+        self.rwAct  = self.readUnsignedInt(2)
+        self.colAct  = self.readUnsignedInt(2)
+        self.irefAct  = self.readUnsignedInt(2)
+        cref  = self.readUnsignedInt(2)
+        self.rgrefs = []
+        for x in xrange(cref):
+            self.rgrefs.append(RefU(self))
+        
+    def parseBytes (self):
+        self.__parseBytes()
+
+        self.appendLine("Active pane: %s" % self.pnn)
+        self.appendLine("Active cell row number(zero based): %s" % self.rwAct)
+        self.appendLine("Active cell column number(zero based): %s" % self.colAct)
+        self.appendLine("Index of the active cell reference in the list of selected cells(zero based): %s" % self.irefAct)
+        for refu in self.rgrefs:
+            self.appendLine("Selected cell: %s" % refu)
+
+    def dumpData(self):
+        self.__parseBytes()
+
+        return ('selection', {'pnn': self.pnn,
+                              'rw-act': self.rwAct,
+                              'col-act': self.colAct,
+                              'iref-act': self.irefAct},
+                              [refu.dumpData() for refu in self.rgrefs])
+
+class MergeCells(BaseRecordHandler):
+    def __parseBytes (self):
+        cmcs  = self.readUnsignedInt(1)
+        self.rgrefs = []
+        for x in xrange(cmcs):
+            ref8 = Ref8(self)
+            self.rgrefs.append(ref8)
+
+    def parseBytes (self):
+        self.__parseBytes()
+        for refu in self.rgrefs:
+            self.appendLine("Merged cells: %s" % refu)
+
+    def dumpData(self):
+        self.__parseBytes()
+
+        return ('merge-cells', {}, [ref8.dumpData() for ref8 in self.rgrefs])
+
 class Name(BaseRecordHandler):
     """Internal defined name (aka Lbl)"""
 
@@ -2515,7 +2698,6 @@ class Hyperlink(BaseRecordHandler):
 
 
 class PhoneticInfo(BaseRecordHandler):
-
     phoneticType = [
         'narrow Katakana', # 0x00
         'wide Katakana',   # 0x01
@@ -2538,26 +2720,33 @@ class PhoneticInfo(BaseRecordHandler):
     def getAlignType (flag):
         return globals.getValueOrUnknown(PhoneticInfo.alignType, flag)
 
-    def parseBytes (self):
-        fontIdx = self.readUnsignedInt(2)
-        self.appendLine("font ID: %d"%fontIdx)
+    def __parseBytes (self):
+        self.fontIdx = self.readUnsignedInt(2)
+        
         flags = self.readUnsignedInt(1)
 
         # flags: 0 0 0 0 0 0 0 0
         #       | unused| B | A |
 
-        phType    = (flags)   & 0x03
-        alignType = (flags/4) & 0x03
+        self.phType    = (flags)   & 0x03
+        self.alignType = (flags/4) & 0x03
 
-        self.appendLine("phonetic type: %s"%PhoneticInfo.getPhoneticType(phType))
-        self.appendLine("alignment: %s"%PhoneticInfo.getAlignType(alignType))
 
         self.readUnsignedInt(1) # unused byte
 
         # TODO: read cell ranges.
 
-        return
+    def parseBytes(self):
+        self.__parseBytes()
+        self.appendLine("font ID: %d" % self.fontIdx)
+        self.appendLine("phonetic type: %s" % PhoneticInfo.getPhoneticType(self.phType))
+        self.appendLine("alignment: %s" % PhoneticInfo.getAlignType(self.alignType))
 
+    def dumpData(self):
+        self.__parseBytes()
+        return ('phonetic-info', {'font-idx': self.fontIdx,
+                                  'ph-type': self.phType,
+                                  'align-type': self.alignType})
 
 class Font(BaseRecordHandler):
 
@@ -2665,6 +2854,13 @@ class Window2(BaseRecordHandler):
         self.appendLineBoolean("display grid", self.displayGrid)
         self.appendLineBoolean("display headings", self.displayHeadings)
         self.appendLineBoolean("frozen window", self.frozen)
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('window2', {'display-formula': self.displayFormula,
+                            'display-grid': self.displayGrid,
+                            'display-headings': self.displayHeadings,
+                            'frozen': self.frozen})
 
 class Pane(BaseRecordHandler):
 
@@ -5577,6 +5773,9 @@ together.
         self.__parseBytes()
         self.msodHdl.fillModel(model)
 
+    def dumpData(self):
+        self.__parseBytes()
+        return self.msodHdl.dumpData()
 
 class MSODrawingGroup(BaseRecordHandler):
 
