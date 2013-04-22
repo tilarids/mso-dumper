@@ -1,7 +1,7 @@
 ########################################################################
 #
-#  Copyright (c) 2010 Kohei Yoshida
-#  
+#  Copyright (c) 2010-2012 Kohei Yoshida
+#
 #  Permission is hereby granted, free of charge, to any person
 #  obtaining a copy of this software and associated documentation
 #  files (the "Software"), to deal in the Software without
@@ -10,10 +10,10 @@
 #  copies of the Software, and to permit persons to whom the
 #  Software is furnished to do so, subject to the following
 #  conditions:
-#  
+#
 #  The above copyright notice and this permission notice shall be
 #  included in all copies or substantial portions of the Software.
-#  
+#
 #  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 #  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
 #  OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -50,7 +50,7 @@ recData = {
     0x0015: ["FOOTER", "Print Footer on Each Page", xlsrecord.Footer],
     0x0016: ["EXTERNCOUNT", "Number of External References"],
     0x0017: ["EXTERNSHEET", "External Reference", xlsrecord.ExternSheet],
-    0x0018: ["NAME", "Internal Defined Name", xlsrecord.Name],
+    0x0018: ["LBL", "Internal Defined Name", xlsrecord.Name],
     0x0019: ["WINDOWPROTECT", "Windows Are Protected"],
     0x0021: ["ARRAY", "Array-Entered Formula", xlsrecord.Array], # undocumented, but identical to 0x0221 ?
     0x001A: ["VERTICALPAGEBREAKS", "Explicit Column Page Breaks"],
@@ -71,7 +71,7 @@ recData = {
     0x003C: ["CONTINUE", "Continues Long Records"],
     0x003D: ["WINDOW1", "Window Information"],
     0x0040: ["BACKUP", "Save Backup Version of the File"],
-    0x0041: ["PANE", "Number of Panes and Their Position"],
+    0x0041: ["PANE", "Number of Panes and Their Position", xlsrecord.Pane],
     0x0042: ["CODEPAGE/CODENAME", "Default Code Page/VBE Object Name"],
     0x004D: ["PLS", "Environment-Specific Print Record", xlsrecord.Pls],
     0x0050: ["DCON", "Data Consolidation Information"],
@@ -121,11 +121,11 @@ recData = {
     0x00AE: ["SCENMAN", "Scenario Output Data"],
     0x00AF: ["SCENARIO", "Scenario Data"],
     0x00B0: ["SXVIEW", "View Definition", xlsrecord.SXView],
-    0x00B1: ["SXVD", "View Fields", xlsrecord.SXViewFields],
-    0x00B2: ["SXVI", "View Item", xlsrecord.SXViewItem],
-    0x00B4: ["SXIVD", "Row/Column Field IDs", xlsrecord.SXIvd],
-    0x00B5: ["SXLI", "Line Item Array"],
-    0x00B6: ["SXPI", "Page Item"],
+    0x00B1: ["SXVD", "View Fields", xlsrecord.Sxvd],
+    0x00B2: ["SXVI", "View Item", xlsrecord.SXVI],
+    0x00B4: ["SXIVD", "Row/Column Field IDs", xlsrecord.SxIvd],
+    0x00B5: ["SXLI", "Line Item Array", xlsrecord.SXLI],
+    0x00B6: ["SXPI", "Page Item", xlsrecord.SXPageItem],
     0x00B8: ["DOCROUTE", "Routing Slip Information"],
     0x00B9: ["RECIPNAME", "Recipient Name"],
     0x00BC: ["SHRFMLA", "Shared Formula"],
@@ -136,15 +136,15 @@ recData = {
     0x00C3: ["DELMENU", "Menu Deletion"],
     0x00C5: ["SXDI", "Data Item", xlsrecord.SXDataItem],
     0x00C6: ["SXDB", "PivotTable Cache Data", xlsrecord.SXDb],
-    0x00C7: ["SXFIELD", "Pivot Field", xlsrecord.SXField],
-    0x00C8: ["SXINDEXLIST", "Indices to Source Data"],       
-    0x00C9: ["SXDOUBLE", "Double Value", xlsrecord.SXDouble],                    
-    0x00CA: ["SXBOOLEAN", "Boolean Value", xlsrecord.SXBoolean],                  
-    0x00CB: ["SXERROR", "Error Code", xlsrecord.SXError],                       
-    0x00CC: ["SXINTEGER", "Integer Value", xlsrecord.SXInteger],                  
+    0x00C7: ["SXFDB", "Pivot Field", xlsrecord.SXFDB],
+    0x00C8: ["SXDBB", "Indices to Source Data", xlsrecord.SXDBB],
+    0x00C9: ["SXDOUBLE", "Double Value", xlsrecord.SXDouble],
+    0x00CA: ["SXBOOLEAN", "Boolean Value", xlsrecord.SXBoolean],
+    0x00CB: ["SXERROR", "Error Code", xlsrecord.SXError],
+    0x00CC: ["SXINT", "Integer Value", xlsrecord.SXInt],
     0x00CD: ["SXSTRING", "String", xlsrecord.SXString],
-    0x00CE: ["SXDATETIME", "Date & Time Special Format"],    
-    0x00CF: ["SXEMPTY", "Empty Value"],                      
+    0x00CE: ["SXDTR", "Date & Time Special Format", xlsrecord.SXDtr],
+    0x00CF: ["SXEMPTY", "Empty Value"],
     0x00D0: ["SXTBL", "Multiple Consolidation Source Info"],
     0x00D1: ["SXTBRGIITM", "Page Item Name Count"],
     0x00D2: ["SXTBPG", "Page Item Indexes"],
@@ -152,6 +152,7 @@ recData = {
     0x00D5: ["SXSTREAMID", "PivotCache Stream ID", xlsrecord.SXStreamID],
     0x00D6: ["RSTRING", "Cell with Character Formatting"],
     0x00D7: ["DBCELL", "Stream Offsets", xlsrecord.DBCell],
+    0x00D8: ["SXRNG", "Numeric/Date Grouping Properties", xlsrecord.SXRng],
     0x00DA: ["BOOKBOOL", "Workbook Option Flag"],
     0x00DC: ["PARAMQRY", "Query Parameters"],
     0x00DC: ["SXEXT", "External Source Information"],
@@ -167,14 +168,16 @@ recData = {
     0x00EC: ["MSODRAWING", "Microsoft Office Drawing", xlsrecord.MSODrawing],
     0x00ED: ["MSODRAWINGSELECTION", "Microsoft Office Drawing Selection", xlsrecord.MSODrawingSelection],
     0x00EF: ["PHONETIC", "Asian Phonetic Settings", xlsrecord.PhoneticInfo],
-    0x00F0: ["SXRULE", "PivotTable Rule Data"],
-    0x00F1: ["SXEX", "PivotTable View Extended Information"],
+    0x00F0: ["SXRULE", "PivotTable Rule Data", xlsrecord.SxRule],
+    0x00F1: ["SXEX", "PivotTable View Extended Information", xlsrecord.SXEx],
     0x00F2: ["SXFILT", "PivotTable Rule Filter"],
+    0x00F4: ["SXDXF", "PivotTable Differential Formatting", xlsrecord.SxDXF],
+    0x00F5: ["SXITM", "PivotTable Referenced Items"],
     0x00F6: ["SXNAME", "PivotTable Name"],
     0x00F7: ["SXSELECT", "PivotTable Selection Information"],
     0x00F8: ["SXPAIR", "PivotTable Name Pair"],
     0x00F9: ["SXFMLA", "PivotTable Parsed Expression"],
-    0x00FB: ["SXFORMAT", "PivotTable Format Record"],
+    0x00FB: ["SXFORMAT", "PivotTable Format Record", xlsrecord.SxFormat],
     0x00FC: ["SST", "Shared String Table", xlsrecord.SST],
     0x00FD: ["LABELSST", "Cell Value", xlsrecord.LabelSST],
     0x00FF: ["EXTSST", "Extended Shared String Table"],
@@ -197,7 +200,7 @@ recData = {
     0x01B6: ["TXO", "Text Object"],
     0x01B7: ["REFRESHALL", "Refresh Flag", xlsrecord.RefreshAll],
     0x01B8: ["HLINK", "Hyperlink", xlsrecord.Hyperlink],
-    0x01BB: ["SXFDBTYPE", "SQL Datatype Identifier"],
+    0x01BB: ["SXFDBTYPE", "SQL Datatype Identifier", xlsrecord.SXFDBType],
     0x01BC: ["PROT4REVPASS", "Shared Workbook Protection Password"],
     0x01BE: ["DV", "Data Validation Criteria", xlsrecord.Dv],
     0x01C0: ["EXCEL9FILE", "Excel 9 File"],
@@ -216,10 +219,11 @@ recData = {
     0x0225: ["DEFAULTROWHEIGHT", "Default Row Height", xlsrecord.DefRowHeight],
     0x0231: ["FONT", "Font Description", xlsrecord.Font],
     0x0236: ["TABLE", "Data Table"],
-    0x023E: ["WINDOW2", "Sheet Window Information"],
+    0x023E: ["WINDOW2", "Sheet Window Information", xlsrecord.Window2],
     0x027E: ["RK", "Cell with Encoded Integer or Floating-Point", xlsrecord.RK],
-    0x0293: ["STYLE", "Style Information"],
+    0x0293: ["STYLE", "Style Information", xlsrecord.Style],
     0x041E: ["FORMAT", "Number Format", xlsrecord.Format],
+    0x04BC: ["SHRFMLA", "Shared Formula", xlsrecord.ShrFmla],
     0x0802: ["QSISXTAG", "Pivot Table and Query Table Extensions", xlsrecord.PivotQueryTableEx],
     0x0809: ["BOF", "Beginning of File", xlsrecord.BOF],
     0x0810: ["SXVIEWEX9", "Pivot Table Extensions", xlsrecord.SXViewEx9],
@@ -248,7 +252,7 @@ recData = {
     0x1003: ["SERIES", "Data Properties for Series, Trendlines or Error Bars", xlsrecord.Series],
     0x1006: ["CHDATAFORMAT", "Data point or series that the formatting information that follows applies to (2.4.74)", xlsrecord.DataFormat],
     0x1007: ["LINEFORMAT", "Appearance of A Line", xlsrecord.LineFormat],
-    0x1009: ["CHMARKERFORMAT", "Color, size, and shape of the markers", xlsrecord.MarkerFormat],
+    0x1009: ["MARKERFORMAT", "Color, Size, and Shape of the Markers", xlsrecord.MarkerFormat],
     0x100A: ["AREAFORMAT", "Patterns and Colors in Filled Region of Chart", xlsrecord.AreaFormat],
     0x100B: ["CHPIEFORMAT", "Distance of a data point from the center", xlsrecord.PieFormat],
     0x100C: ["CHATTACHEDLABEL", "Properties of a data label", xlsrecord.AttachedLabel],
@@ -295,7 +299,7 @@ recData = {
     0x1051: ["BRAI", "Data Source of A Chart", xlsrecord.Brai],
     0x105B: ["CHSERERRORBAR", "?"],
     0x105D: ["CHSERIESFORMAT", "Series properties", xlsrecord.SerFmt],
-    0x105F: ["CH3DDATAFORMAT", "Shape of the data points(2.4.47)", xlsrecord.Chart3DBarShape],
+    0x105F: ["CHART3DBARSHAPE", "Shape of the Data Points", xlsrecord.Chart3DBarShape],
     0x1060: ["FBI", "Font Information for Chart", xlsrecord.Fbi],
     0x1061: ["CHPIEEXT", "Pie/bar of pie chart group", xlsrecord.BobPop],
     0x1062: ["AXCEXT", "Additional extension properties of a date axis(2.4.9)", xlsrecord.AxcExt],
@@ -318,11 +322,13 @@ recDataRev = {
     0x0151: ["EONB*", "Change Track End of Nested Block"]
 }
 
+
 class StreamData(object):
     """run-time stream data."""
     def __init__ (self):
         self.encrypted = False
         self.pivotCacheIDs = {}
+        self.pivotCacheFields = []
 
     def appendPivotCacheId (self, newId):
         # must be 4-digit with leading '0's.
@@ -331,6 +337,7 @@ class StreamData(object):
 
     def isPivotCacheStream (self, name):
         return self.pivotCacheIDs.has_key(name)
+
 
 class XLStream(object):
 
@@ -408,10 +415,12 @@ class XLStream(object):
         strm = XLDirStream(bytes, self.params, self.strmData)
         return strm
 
+
 class DirType:
     Workbook = 0
     RevisionLog = 1
     PivotTableCache = 2
+
 
 class XLDirStream(object):
 
@@ -463,14 +472,14 @@ class XLDirStream(object):
         return pos, header, size, bytes
 
     def __getRecordHandler (self, header, size, bytes):
-        # record handler that parses the raw bytes and displays more 
+        # record handler that parses the raw bytes and displays more
         # meaningful information.
-        handler = None 
+        handler = None
         if recData.has_key(header) and len(recData[header]) >= 3:
             handler = recData[header][2](header, size, bytes, self.strmData)
 
         if handler != None and self.strmData.encrypted:
-            # record handler exists.  Parse the record and display more info 
+            # record handler exists.  Parse the record and display more info
             # unless the stream is encrypted.
             handler = None
 
@@ -478,7 +487,7 @@ class XLDirStream(object):
 
     def __postReadRecord (self, header):
         if recData.has_key(header) and recData[header][0] == "FILEPASS":
-            # presence of FILEPASS record indicates that the stream is 
+            # presence of FILEPASS record indicates that the stream is
             # encrypted.
             self.strmData.encrypted = True
 
@@ -497,10 +506,10 @@ class XLDirStream(object):
     def readRecord (self):
         pos, header, size, bytes = self.__readRecordBytes()
 
-        # record handler that parses the raw bytes and displays more 
+        # record handler that parses the raw bytes and displays more
         # meaningful information.
-        handler = None 
-        
+        handler = None
+
         print("")
         headerStr = "%4.4Xh: "%header
         self.__printSep('=', globals.OutputWidth-len(headerStr), headerStr)
@@ -533,7 +542,7 @@ class XLDirStream(object):
             print("")
 
         if handler != None and not self.strmData.encrypted:
-            # record handler exists.  Parse the record and display more info 
+            # record handler exists.  Parse the record and display more info
             # unless the stream is encrypted.
             handler.output()
 

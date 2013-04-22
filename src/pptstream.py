@@ -1,3 +1,4 @@
+# -*- tab-width: 4; indent-tabs-mode: nil -*-
 ########################################################################
 #
 #    OpenOffice.org - a multi-platform office productivity suite
@@ -125,8 +126,8 @@ class PPTDirStream(object):
             self.__print("[%s]"%recData[recordType][0])
         else:
             self.__print("[anon record]")
-        self.__print("(type: %4.4Xh inst: %4.4Xh, vers: %4.4Xh, start: %d, size: %d)"%
-              (recordType, recordInstance, recordVersion, startPos, size))
+        self.__print("(type: %4.4Xh (%d) inst: %4.4Xh (%d), vers: %4.4Xh, start: %d, size: %d)"%
+              (recordType, recordType, recordInstance, recordInstance, recordVersion, startPos, size))
         self.__printSep('=')
 
 
@@ -213,11 +214,11 @@ recData = {
  1004:  ["DFF_PST_SlideBase"],
  1005:  ["DFF_PST_SlideBaseAtom"],
  1006:  ["DFF_PST_Slide"],
- 1007:  ["DFF_PST_SlideAtom"],
+ 1007:  ["DFF_PST_SlideAtom", pptrecord.SlideAtom],
  1008:  ["DFF_PST_Notes"],
  1009:  ["DFF_PST_NotesAtom"],
  1010:  ["DFF_PST_Environment"],
- 1011:  ["DFF_PST_SlidePersistAtom"],
+ 1011:  ["DFF_PST_SlidePersistAtom", pptrecord.SlidePersistAtom],
  1012:  ["DFF_PST_Scheme"],
  1013:  ["DFF_PST_SchemeAtom"],
  1014:  ["DFF_PST_DocViewInfo"],
@@ -227,8 +228,8 @@ recData = {
  1018:  ["DFF_PST_SlideViewInfo"],
  1019:  ["DFF_PST_GuideAtom"],
  1020:  ["DFF_PST_ViewInfo"],
- 1021:  ["DFF_PST_ViewInfoAtom"],
- 1022:  ["DFF_PST_SlideViewInfoAtom"],
+ 1021:  ["DFF_PST_ViewInfoAtom", pptrecord.ViewInfoAtom],
+ 1022:  ["DFF_PST_SlideViewInfoAtom", pptrecord.SlideViewInfoAtom],
  1023:  ["DFF_PST_VBAInfo"],
  1024:  ["DFF_PST_VBAInfoAtom"],
  1025:  ["DFF_PST_SSDocInfoAtom"],

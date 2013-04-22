@@ -1,3 +1,4 @@
+# -*- tab-width: 4; indent-tabs-mode: nil -*-
 ########################################################################
 #
 #    OpenOffice.org - a multi-platform office productivity suite
@@ -100,6 +101,15 @@ append a line to be displayed.
         bytes = self.readBytes(8)
         return globals.getDouble(bytes)
 
+    def readRatio (self):
+        numer = self.readSignedInt(4)
+        denom = self.readSignedInt(4)
+        return "%d/%d"%(numer, denom)
+    
+    def readScaling (self):
+        xratio = self.readRatio()
+        yratio = self.readRatio()
+        return "(%s,%s)"%(xratio, yratio)
 
 class String(BaseRecordHandler):
     """Textual content."""
@@ -404,6 +414,66 @@ class SlideInfo(BaseRecordHandler):
         self.appendLine("transition type: %d"%(ttype & 0xff00))
         self.appendLine("flags: %d"%self.readUnsignedInt(2))
         self.appendLine("speed: %d"%self.readUnsignedInt(1))
+
+# -------------------------------------------------------------------
+# special record handler: slide atom
+
+class SlideAtom(BaseRecordHandler):
+    """Slide atom."""
+
+    def parseBytes (self):
+        geom=self.readUnsignedInt(4)
+        self.appendLine("geom: %s %4.4Xh (%d)"%(slideLayoutTypes[geom], geom, geom))
+        self.appendLine("placeholder type: %s"%(placeholderEnum[self.readUnsignedInt(1)]))
+        self.appendLine("placeholder type: %s"%(placeholderEnum[self.readUnsignedInt(1)]))
+        self.appendLine("placeholder type: %s"%(placeholderEnum[self.readUnsignedInt(1)]))
+        self.appendLine("placeholder type: %s"%(placeholderEnum[self.readUnsignedInt(1)]))
+        self.appendLine("placeholder type: %s"%(placeholderEnum[self.readUnsignedInt(1)]))
+        self.appendLine("placeholder type: %s"%(placeholderEnum[self.readUnsignedInt(1)]))
+        self.appendLine("placeholder type: %s"%(placeholderEnum[self.readUnsignedInt(1)]))
+        self.appendLine("placeholder type: %s"%(placeholderEnum[self.readUnsignedInt(1)]))
+        self.appendLine("masterIdRef: %d"%(self.readUnsignedInt(4)))
+        self.appendLine("notesIdRef: %d"%(self.readUnsignedInt(4)))
+        self.appendLine("slideflags: %2.2Xh"%(self.readUnsignedInt(2)))
+        self.appendLine("unused: %2.2Xh (must be ignored)"%(self.readUnsignedInt(2)))
+
+# -------------------------------------------------------------------
+# special record handler: slide persist atom
+
+class SlidePersistAtom(BaseRecordHandler):
+    """Slide Persist atom."""
+
+    def parseBytes (self):
+        slideref=self.readUnsignedInt(4)
+        self.appendLine("logical slide reference: %4.4Xh (%d)"%(slideref, slideref))
+        flags=self.readUnsignedInt(4)
+        self.appendLine("outline view is collapsed: %s"%((flags & 0x02)!=0))
+        self.appendLine("slide contains shapes other than placeholders: %s"%((flags & 0x04)!=0))
+        self.appendLine("number of placeholder texts: %d"%self.readUnsignedInt(4))
+        self.appendLine("unique slide id: %d"%self.readUnsignedInt(4))
+
+# -------------------------------------------------------------------
+# special record handler: slide view info atom
+
+class SlideViewInfoAtom(BaseRecordHandler):
+    """Slide View Info atom."""
+
+    def parseBytes (self):
+        self.appendLine("guides visible: %s"%(self.readUnsignedInt(1)!=0))
+        self.appendLine("snap to grid: %s"%(self.readUnsignedInt(1)!=0))
+        self.appendLine("snap to shape: %s"%(self.readUnsignedInt(1)!=0))
+
+# -------------------------------------------------------------------
+# special record handler: view info atom
+
+class ViewInfoAtom(BaseRecordHandler):
+    """View Info atom."""
+
+    def parseBytes (self):
+        self.appendLine("current scale: %s"%self.readScaling())
+        self.readBytes(24)
+        self.appendLine("origin: (%d,%d)"%(self.readSignedInt(4), self.readSignedInt(4)))
+        self.appendLine("zoom to fit: %s"%(self.readUnsignedInt(1)!=0))
 
 # -------------------------------------------------------------------
 # special record handlers: ppt97 animation info
@@ -1603,4 +1673,51 @@ textHeader = {
    6:  ["title in title slide"],
    7:  ["body in two-column slide"],
    8:  ["body in four-column slide"]
+}
+
+slideLayoutTypes = {
+    0: ["SL_TitleSlide"],
+    1: ["SL_TitleBody"],
+    2: ["SL_MasterTitle"],
+    7: ["SL_TitleOnly"],
+    8: ["SL_TwoColumns"],
+    9: ["SL_TwoRows"],
+    10: ["SL_ColumnTwoRows"],
+    11: ["SL_TwoRowsColumn"],
+    13: ["SL_TwoColumnsRow"],
+    14: ["SL_FourObjects"],
+    15: ["SL_BigObject"],
+    16: ["SL_Blank"],
+    17: ["SL_VerticalTitleBody"],
+    18: ["SL_VerticalTwoRows"]
+}
+
+placeholderEnum = {
+    0: ["PT_None"],
+    1: ["PT_MasterTitle"],
+    2: ["PT_MasterBody"],
+    3: ["PT_MasterCenterTitle"],
+    4: ["PT_MasterSubtitle"],
+    5: ["PT_MasterNotesSlideImage"],
+    6: ["PT_MasterNotesBody"],
+    7: ["PT_MasterDate"],
+    8: ["PT_MasterSlideNumber"],
+    9: ["PT_MasterFooter"],
+    10: ["PT_MasterHeader"],
+    11: ["PT_NotesSlideImage"],
+    12: ["PT_NotesBody"],
+    13: ["PT_Title"],
+    14: ["PT_Body"],
+    15: ["PT_CenterTitle"],
+    16: ["PT_SubTitle"],
+    17: ["PT_VerticalTitle"],
+    18: ["PT_VerticalBody"],
+    19: ["PT_Object"],
+    20: ["PT_Graph"],
+    21: ["PT_Table"],
+    22: ["PT_ClipArt"],
+    23: ["PT_OrgChart"],
+    24: ["PT_Media"],
+    25: ["PT_VerticalObject"],
+    26: ["PT_Picture"]
 }

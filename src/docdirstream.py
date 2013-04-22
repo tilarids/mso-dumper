@@ -1,0 +1,159 @@
+#!/usr/bin/env python
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+#
+
+import globals
+import struct
+from xml.sax.saxutils import quoteattr
+
+class DOCDirStream:
+    """Represents one single word file subdirectory, like e.g. 'WordDocument'."""
+
+    def __init__(self, bytes, params = None, name = None, mainStream = None, doc = None):
+        self.bytes = bytes
+        self.size = len(self.bytes)
+        self.pos = 0
+        self.params = params
+        self.name = name
+        self.mainStream = mainStream
+        self.doc = doc
+    
+    def printAndSet(self, key, value, hexdump = True, end = True, offset = False, silent = False):
+        setattr(self, key, value)
+        if silent:
+            return
+        if hexdump:
+            value = hex(value)
+        offstr = ""
+        if offset:
+            offstr += ' offset="%s"' % hex(self.pos)
+        if end:
+            print '<%s value="%s"%s/>' % (key, value, offstr)
+        else:
+            print '<%s value="%s"%s>' % (key, value, offstr)
+
+    def quoteAttr(self, value):
+        """Wrapper around xml.sax.saxutils.quoteattr, assumes the caller will put " around the result."""
+        ret = quoteattr("'"+value+"'")
+        return ret[2:len(ret)-2]
+
+    def getuInt8(self, bytes = None, pos = None):
+        if not bytes:
+            bytes = self.bytes
+        if not pos:
+            pos = self.pos
+        return struct.unpack("<B", bytes[pos:pos+1])[0]
+
+    def readuInt8(self):
+        ret = self.getuInt8()
+        self.pos += 1
+        return ret
+
+    def getuInt16(self, bytes = None, pos = None):
+        if not bytes:
+            bytes = self.bytes
+        if not pos:
+            pos = self.pos
+        return struct.unpack("<H", bytes[pos:pos+2])[0]
+
+    def readuInt16(self):
+        ret = self.getuInt16()
+        self.pos += 2
+        return ret
+
+    def getInt16(self, bytes = None, pos = None):
+        if not bytes:
+            bytes = self.bytes
+        if not pos:
+            pos = self.pos
+        return struct.unpack("<h", bytes[pos:pos+2])[0]
+
+    def readInt16(self):
+        ret = self.getInt16()
+        self.pos += 2
+        return ret
+
+    def getuInt32(self, bytes = None, pos = None):
+        if not bytes:
+            bytes = self.bytes
+        if not pos:
+            pos = self.pos
+        return struct.unpack("<I", bytes[pos:pos+4])[0]
+
+    def readuInt32(self):
+        ret = self.getuInt32()
+        self.pos += 4
+        return ret
+
+    def getInt32(self, bytes = None, pos = None):
+        if not bytes:
+            bytes = self.bytes
+        if not pos:
+            pos = self.pos
+        return struct.unpack("<i", bytes[pos:pos+4])[0]
+
+    def readInt32(self):
+        ret = self.getInt32()
+        self.pos += 4
+        return ret
+
+    def getuInt64(self, bytes = None, pos = None):
+        if not bytes:
+            bytes = self.bytes
+        if not pos:
+            pos = self.pos
+        return struct.unpack("<Q", bytes[pos:pos+8])[0]
+
+    def readuInt64(self):
+        ret = self.getuInt64()
+        self.pos += 8
+        return ret
+
+    def getString(self):
+        bytes = []
+        while True:
+            i = self.readuInt8()
+            j = self.readuInt8()
+            if i != 0 or j != 0:
+                bytes.append(i)
+                bytes.append(j)
+            else:
+                break
+        return globals.getUTF8FromUTF16("".join(map(lambda x: chr(x), bytes)))
+
+    def getBit(self, byte, bitNumber):
+        return (byte & (1 << bitNumber)) >> bitNumber
+
+    def dump(self):
+        print '<stream name="%s" size="%s"/>' % (globals.encodeName(self.name), self.size)
+
+    # compat methods to make msodraw happy
+    def readUnsignedInt(self, size):
+        if size == 1:
+            return self.readuInt8()
+        elif size == 2:
+            return self.readuInt16()
+        elif size == 4:
+            return self.readuInt32()
+        raise Exception
+
+    def readSignedInt(self, size):
+        if size == 4:
+            return self.readInt32()
+        raise Exception
+
+    def readBytes(self, length):
+        r = self.bytes[self.pos:self.pos+length]
+        self.pos += length
+        return r
+
+    def moveForward (self, byteCount):
+        self.pos += byteCount
+
+    def appendLine(self, line):
+        print line
+
+# vim:set filetype=python shiftwidth=4 softtabstop=4 expandtab:
