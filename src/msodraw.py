@@ -326,6 +326,7 @@ class FOPT:
             self.J = (prop.value & 0x00100000) != 0
 
         def appendLines (self, recHdl, prop, level):
+            self.__parseBytes(prop)
             recHdl.appendLineBoolean(indent(level) + "fit shape to text",     self.B)
             recHdl.appendLineBoolean(indent(level) + "auto text margin",      self.D)
             recHdl.appendLineBoolean(indent(level) + "select text",           self.E)

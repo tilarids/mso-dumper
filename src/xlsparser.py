@@ -703,7 +703,12 @@ class CodeName(BaseParser): pass
 class Window2(BaseParser):
     PARSER = Term(xlsrecord.Window2)
 
-class PLV(BaseParser): pass
+class PLV(BaseParser):
+    PARSER = Term(xlsrecord.PLV)
+
+class PLVMac(BaseParser):
+    PARSER = Term(xlsrecord.PLVMac)
+
 class Scl(BaseParser): pass
 class Pane(BaseParser): pass
 class Selection(BaseParser): 
@@ -712,7 +717,7 @@ class Selection(BaseParser):
 
 class WINDOW(BaseParser):
     # WINDOW = Window2 [PLV] [Scl] [Pane] *Selection
-    PARSER = Group('window', Req(Window2()) << Opt(PLV()) << Scl() << Pane() << Many('selections', Selection()))
+    PARSER = Group('window', Req(Window2()) << PLV() << Scl() << Pane() << Many('selections', Selection()))
 
 class CUSTOMVIEW(BaseParser): pass
 
@@ -853,7 +858,9 @@ class NoteSh(BaseParser):
 class PIVOTVIEW(BaseParser): pass
 class DCON(BaseParser): pass
 class SORT(BaseParser): pass
-class DxGCol(BaseParser): pass
+
+class DxGCol(BaseParser):
+    PARSER = Term(xlsrecord.DxGCol)
 
 class MergeCells(BaseParser):
     PARSER = Term(xlsrecord.MergeCells)
@@ -884,6 +891,10 @@ class FEAT(BaseParser): pass
 class FEAT11(BaseParser): pass
 class RECORD12(BaseParser): pass
 
+# NOTE: this is not from the doc
+class FUTURES(BaseParser):
+    PARSER = Many('futures', OneOf(PLVMac()))
+
 class WORKSHEETCONTENT(BaseParser):
     #WORKSHEETCONTENT = [Uncalced] Index GLOBALS PAGESETUP [HeaderFooter] [BACKGROUND]
     #*BIGNAME [PROTECTION] COLUMNS [SCENARIOS] SORTANDFILTER Dimensions [CELLTABLE]
@@ -901,7 +912,7 @@ class WORKSHEETCONTENT(BaseParser):
                 Req(CONDFMTS()) << Many('hlinks', HLINK()) << Opt(DVAL()) << CodeName() <<
                 Many('web-pubs', WebPub()) << Many('cell-watch-list', CellWatch()) << SheetExt() << 
                 Many('feat-list', FEAT()) << Many('feat11-list', FEAT11()) << Many('record12-list', RECORD12()) <<
-                Req(EOF()))
+                FUTURES() << Req(EOF()))
     
 class XlsParser(BaseParser):
     def __init__(self, tokens):

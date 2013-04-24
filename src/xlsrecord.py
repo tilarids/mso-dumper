@@ -91,6 +91,17 @@ class Ref8(Ref8U): # TODO: investigate and make different implementation for it 
                          'col1': self.col1,
                          'col2': self.col2})
 
+class SqRef(object):
+    def __init__ (self, strm):
+        self.cref = strm.readUnsignedInt(2)
+        self.rgrefs = []
+        for x in xrange(self.cref):
+            self.rgrefs.append(Ref8(strm))
+
+    def dumpData(self):
+        return ('sqref', {}, [ref.dumpData() for ref in self.rgrefs])
+
+
 class RKAuxData(object):
     """Store auxiliary data for RK value"""
     def __init__ (self):
@@ -2167,7 +2178,7 @@ class Selection(BaseRecordHandler):
 
 class MergeCells(BaseRecordHandler):
     def __parseBytes (self):
-        cmcs  = self.readUnsignedInt(1)
+        cmcs  = self.readUnsignedInt(2)
         self.rgrefs = []
         for x in xrange(cmcs):
             ref8 = Ref8(self)
@@ -2182,6 +2193,74 @@ class MergeCells(BaseRecordHandler):
         self.__parseBytes()
 
         return ('merge-cells', {}, [ref8.dumpData() for ref8 in self.rgrefs])
+
+class DxGCol(BaseRecordHandler):
+    def __parseBytes (self):
+        self.dxgCol = self.readUnsignedInt(2)
+
+    def parseBytes (self):
+        self.__parseBytes()
+        self.appendLine("Default column width: %s" % self.dxgCol)
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('dxg-col', {'value': self.dxgCol})
+
+class PLV(BaseRecordHandler):
+    def __parseBytes (self):
+        self.frtHeader = self.readFrtHeader()
+        self.wScalePLV = self.readUnsignedInt(2)
+        flag = self.readUnsignedInt(2)
+        self.fPageLayoutView   = flag & 0x0001
+        self.fRulerVisible     = flag & 0x0002
+        self.fWhitespaceHidden = flag & 0x0004
+
+    def parseBytes (self):
+        self.__parseBytes()
+        self.appendLine("Header: %s, %s" % (str(self.frtHeader.rt), str(self.frtHeader.flags)))
+        self.appendLine("Zoom scale as a percentage for the Page Layout view of the current sheet: %s" % self.wScalePLV)
+        self.appendLine("Sheet is in the Page Layout view: %s" % self.getYesNo(self.fPageLayoutView))
+        self.appendLine("Application displays the ruler: %s" % self.getYesNo(self.fRulerVisible))
+        self.appendLine("Margins between pages are hidden in the Page Layout view: %s" % self.getYesNo(self.fWhitespaceHidden))
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('plv', {"scale-plv": self.wScalePLV,
+                        "page-layout-view": self.fPageLayoutView,
+                        "ruler-visible": self.fRulerVisible,
+                        "whitespace-hidden": self.fWhitespaceHidden},
+                        [('frt-header', dumpFrtHeader(self.frtHeader))])
+
+
+class PLVMac(BaseRecordHandler):
+    def __parseBytes (self):
+        self.rt = self.readUnsignedInt(2)
+        self.frtFlags = self.readUnsignedInt(2)
+        flags = self.readUnsignedInt(1)
+        self.wscale = self.readUnsignedInt(4)
+        self.fPLVMove = flags & 0x01
+        self.fOnePage = flags & 0x02
+        self.fRuler = flags & 0x04
+        self.fPrintScaleNotSheetScale = flags & 0x08
+
+    def parseBytes (self):
+        self.__parseBytes()
+        self.appendLine("Header: %s, %s" % (str(self.rt), str(self.frtFlags)))
+        self.appendLine("wscale: %s" % self.wscale)
+        self.appendLine("fPLVMove: %s" % self.getYesNo(self.fPLVMove))
+        self.appendLine("fOnePage: %s" % self.getYesNo(self.fOnePage))
+        self.appendLine("fRuler: %s" % self.getYesNo(self.fRuler))
+        self.appendLine("fPrintScaleNotSheetScale: %s" % self.getYesNo(self.fPrintScaleNotSheetScale))
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('plv-mac', {"rt": self.rt,
+                            "frt-flags": self.frtFlags,
+                            "wscale": self.wscale,
+                            "plv-move": self.fPLVMove,
+                            "one-page": self.fOnePage,
+                            "ruler": self.fRuler,
+                            "print-scale-not-sheet-scale": self.fPrintScaleNotSheetScale})
 
 class Name(BaseRecordHandler):
     """Internal defined name (aka Lbl)"""
@@ -2733,20 +2812,22 @@ class PhoneticInfo(BaseRecordHandler):
 
 
         self.readUnsignedInt(1) # unused byte
-
-        # TODO: read cell ranges.
+        self.sqref = SqRef(self)
 
     def parseBytes(self):
         self.__parseBytes()
         self.appendLine("font ID: %d" % self.fontIdx)
         self.appendLine("phonetic type: %s" % PhoneticInfo.getPhoneticType(self.phType))
         self.appendLine("alignment: %s" % PhoneticInfo.getAlignType(self.alignType))
+        for ref in self.sqref.rgrefs:
+            self.appendLine("Cell: %s" % x)
 
     def dumpData(self):
         self.__parseBytes()
         return ('phonetic-info', {'font-idx': self.fontIdx,
                                   'ph-type': self.phType,
-                                  'align-type': self.alignType})
+                                  'align-type': self.alignType},
+                                  [self.sqref.dumpData()])
 
 class Font(BaseRecordHandler):
 
