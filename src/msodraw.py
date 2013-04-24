@@ -186,7 +186,16 @@ class ColorRef:
             recHdl.appendLine('<sysIndex value="%s"/>'%self.sysIndex)
         recHdl.appendLine('</colorRef>')
 
-
+    def dumpData(self):
+        return ('color', {'red': self.red,
+                          'green': self.green,
+                          'blue': self.blue,
+                          'flag': self.flag,
+                          'palette-index': self.paletteIndex,
+                          'palette-rgb': self.paletteRGB,
+                          'system-rgb': self.systemRGB,
+                          'scheme-index': self.schemeIndex,
+                          'sys-index': self.sysIndex})
 
 class FDG:
     def __init__ (self, strm):
@@ -205,6 +214,9 @@ class FDG:
         recHdl.appendLine('<spidCur value="%d"/>' % self.lastShapeID)
         recHdl.appendLine('</drawingData>')
 
+    def dumpData(self, rh):
+        return ('fdg', {'shape-count': self.shapeCount,
+                        'last-shape-id': self.lastShapeID})
 
 class IDCL:
     def __init__ (self, strm):
@@ -301,25 +313,34 @@ class FOPT:
     """property table for a shape instance"""
 
     class TextBoolean:
+        def __parseBytes(self, prop):
+            self.A = (prop.value & 0x00000001) != 0
+            self.B = (prop.value & 0x00000002) != 0
+            self.C = (prop.value & 0x00000004) != 0
+            self.D = (prop.value & 0x00000008) != 0
+            self.E = (prop.value & 0x00000010) != 0
+            self.F = (prop.value & 0x00010000) != 0
+            self.G = (prop.value & 0x00020000) != 0
+            self.H = (prop.value & 0x00040000) != 0
+            self.I = (prop.value & 0x00080000) != 0
+            self.J = (prop.value & 0x00100000) != 0
 
         def appendLines (self, recHdl, prop, level):
-            A = (prop.value & 0x00000001) != 0
-            B = (prop.value & 0x00000002) != 0
-            C = (prop.value & 0x00000004) != 0
-            D = (prop.value & 0x00000008) != 0
-            E = (prop.value & 0x00000010) != 0
-            F = (prop.value & 0x00010000) != 0
-            G = (prop.value & 0x00020000) != 0
-            H = (prop.value & 0x00040000) != 0
-            I = (prop.value & 0x00080000) != 0
-            J = (prop.value & 0x00100000) != 0
-            recHdl.appendLineBoolean(indent(level) + "fit shape to text",     B)
-            recHdl.appendLineBoolean(indent(level) + "auto text margin",      D)
-            recHdl.appendLineBoolean(indent(level) + "select text",           E)
-            recHdl.appendLineBoolean(indent(level) + "use fit shape to text", G)
-            recHdl.appendLineBoolean(indent(level) + "use auto text margin",  I)
-            recHdl.appendLineBoolean(indent(level) + "use select text",       J)
+            recHdl.appendLineBoolean(indent(level) + "fit shape to text",     self.B)
+            recHdl.appendLineBoolean(indent(level) + "auto text margin",      self.D)
+            recHdl.appendLineBoolean(indent(level) + "select text",           self.E)
+            recHdl.appendLineBoolean(indent(level) + "use fit shape to text", self.G)
+            recHdl.appendLineBoolean(indent(level) + "use auto text margin",  self.I)
+            recHdl.appendLineBoolean(indent(level) + "use select text",       self.J)
 
+        def dumpData(self, strm, prop):
+            self.__parseBytes(prop)
+            return ('text-boolean', {'fit-shape-to-text': self.B,
+                                     'auto-text-margin': self.D,
+                                     'select-text': self.E,
+                                     'use-fit-shape-to-text': self.G,
+                                     'use-auto-text-margin': self.I,
+                                     'use-select-text': self.J})
     class CXStyle:
         style = [
             'straight connector',     # 0x00000000
@@ -343,6 +364,10 @@ class FOPT:
             color = ColorRef(prop.value)
             color.dumpXml(recHdl)
             recHdl.appendLine('</fillColor>')
+
+        def dumpData(self, strm, prop):
+            color = ColorRef(prop.value)
+            return ('fill-color', {}, [color.dumpData()])
 
     class FillStyle:
 
@@ -404,6 +429,23 @@ class FOPT:
             recHdl.appendLine('<fUsefFilled value="%s"/>' % self.L)
             recHdl.appendLine('<fUsefUseShapeAnchor value="%s"/>' % self.M)
             recHdl.appendLine('<fUsefRecolorFillAsPicture value="%s"/>' % self.N)
+
+        def dumpData(self, strm, prop):
+            self.__parseBytes(strm)
+            return ('fill-style', {'no-fill-hit-test': self.A, 
+                                   'fill-use-rect': self.B, 
+                                   'fill-shape': self.C, 
+                                   'hit-test-fill': self.D, 
+                                   'filled': self.E, 
+                                   'use-shape-anchor': self.F, 
+                                   'recolor-fill-as-picture': self.G, 
+                                   'use-no-fill-hit-test': self.H, 
+                                   'use-fill-use-rect': self.I, 
+                                   'use-fill-shape': self.J, 
+                                   'use-hit-test-fill': self.K, 
+                                   'use-filled': self.L, 
+                                   'use-shape-anchor': self.M, 
+                                   'use-recolor-fill-as-picture': self.N})
 
     class LineColor:
 
@@ -479,6 +521,16 @@ class FOPT:
                 bval = (flag & 0x00000001)
                 recHdl.appendLine(indent(level)+"%s: %s"%(FOPT.GroupShape.flagNames[i], recHdl.getTrueFalse(bval)))
                 flag /= 2
+
+        def dumpData(self, strm, prop):
+            flag = prop.value
+            flagCount = len(FOPT.GroupShape.flagNames)
+            flags = []
+            for i in xrange(0, flagCount):
+                bval = (flag & 0x00000001)
+                flags.append((FOPT.GroupShape.flagNames[i], bval))
+                flag /= 2
+            return ('group-shape', dict(flags))
 
     propTable = {
         0x00BF: ['Text Boolean Properties', TextBoolean],
@@ -607,6 +659,32 @@ class FOPT:
         recHdl.appendLine('</fopt>')
         recHdl.appendLine('</%s>' % self.name)
 
+    def dumpData(self, rh):
+        self.__parseBytes(rh)
+        props = []
+        for prop in self.properties:
+            children = []
+            children.append(('opid', {'value': prop.ID,
+                                      'bid': prop.flagBid,
+                                      'complex': prop.flagComplex}))
+            if FOPT.propTable.has_key(prop.ID) and len(FOPT.propTable[prop.ID]) > 1:
+                # We have a handler for this property.
+                # propData is expected to have two elements: name (0) and handler (1).
+                propHdl = FOPT.propTable[prop.ID][1]
+                children.append(propHdl().dumpData(self.strm, prop))
+            else:
+                if prop.flagComplex:
+                    children.append(('complex-data', {'data': globals.getRawBytes(prop.extra, True, False)}))
+                elif prop.flagBid:
+                    children.append(('blip-id', {'value': prop.value}))
+                else:
+                    # regular property value
+                    if FOPT.propTable.has_key(prop.ID):
+                        children.append(('prop-description', {'value': FOPT.propTable[prop.ID][0]}))
+                    children.append(('prop-value', {'value': prop.value}))
+            props.append(('prop', {}, children))
+        return (self.name, {'type': self.type}, props)
+
 class TertiaryFOPT(FOPT):
     def __init__ (self, strm):
         FOPT.__init__(self, strm, "shapeTertiaryOptions", "OfficeArtTertiaryFOPT")
@@ -670,6 +748,20 @@ class FSP:
         recHdl.appendLine('<fHaveSpt value="%d"/>' % self.haveProperties)
         recHdl.appendLine('</shapeProp>')
 
+    def dumpData(self, rh):
+        return ('fsp', {'spid': self.spid,
+                        'group-shape': self.groupShape,
+                        'child-shape': self.childShape,
+                        'top-most-in-group': self.topMostInGroup,
+                        'deleted': self.deleted,
+                        'ole-object': self.oleObject,
+                        'have-master': self.haveMaster,
+                        'flip-horizontal': self.flipHorizontal,
+                        'flip-vertical': self.flipVertical,
+                        'is-connector': self.isConnector,
+                        'have-anchor': self.haveAnchor,
+                        'background': self.background,
+                        'have-properties': self.haveProperties})
 
 class FSPGR:
     def __init__ (self, strm):
@@ -693,7 +785,11 @@ class FSPGR:
         recHdl.appendLine('<yBottom value="%d"/>' % self.bottom)
         recHdl.appendLine('</shapeGroup>')
 
-
+    def dumpData(self, rh):
+        return ('fspgr', {'left': self.left,
+                          'top': self.top,
+                          'right': self.right,
+                          'bottom': self.bottom})
 class FConnectorRule:
     def __init__ (self, strm):
         self.ruleID = strm.readUnsignedInt(4)
@@ -892,9 +988,11 @@ class MSODrawHandler(globals.ByteStream):
         children = []
         while not self.isEndOfRecord():
             rh = RecordHeader(self)
-            if False:#recData.has_key(rh.recType):
+            if rh.recVer == 0xF: # container
+                children.append(rh.dumpData())
+            elif recData.has_key(rh.recType):
                 obj = recData[rh.recType](self)
-                children.append(('record', {}, [rh.dumpData(), obj.dumpData()]))
+                children.append(('record', {}, [rh.dumpData(), obj.dumpData(rh)]))
             else:
                 # TODO: fix
                 bytes = self.readBytes(min(rh.recLen, self.size - self.pos))

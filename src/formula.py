@@ -34,7 +34,7 @@ class FormulaParserError(Exception): pass
 def toColName (colID):
     if colID > 255:
         globals.error("Column ID greater than 255")
-        raise InvalidCellAddress
+        # raise InvalidCellAddress
     n1 = colID % 26
     n2 = int(colID/26)
     name = struct.pack('b', n1 + ord('A'))
