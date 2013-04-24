@@ -201,6 +201,7 @@ recData = {
     0x01B6: ["TXO", "Text Object", xlsrecord.TxO],
     0x01B7: ["REFRESHALL", "Refresh Flag", xlsrecord.RefreshAll],
     0x01B8: ["HLINK", "Hyperlink", xlsrecord.Hyperlink],
+    0x01BA: ["CODENAME", "Code Name in VBA Project", xlsrecord.CodeName],
     0x01BB: ["SXFDBTYPE", "SQL Datatype Identifier", xlsrecord.SXFDBType],
     0x01BC: ["PROT4REVPASS", "Shared Workbook Protection Password"],
     0x01BE: ["DV", "Data Validation Criteria", xlsrecord.Dv],

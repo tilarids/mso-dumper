@@ -36,12 +36,14 @@ class TokenStream(object):
     def __init__(self, tokens):
         self.tokens = tokens
         self.currentIndex = 0
+        self.maxCurrentIndex = 0
     
     def readToken(self):
         if self.eof():
             return None
         token = self.tokens[self.currentIndex]
         self.currentIndex += 1
+        self.maxCurrentIndex = max(self.currentIndex, self.maxCurrentIndex)
         return token
     
     def eof(self):
@@ -50,6 +52,7 @@ class TokenStream(object):
         else:
             return False
         
+
 
 class BaseParser(object):
     def parse(self, stream):
@@ -304,7 +307,10 @@ class TEXTOBJECT(BaseParser):
 class Obj(BaseParser):
     PARSER = Term(xlsrecord.Obj)
 
-class CHART(BaseParser): pass        
+class CHART(BaseParser): 
+    def parse(self, stream):
+        return Group('chart', Req(BOF()) << Req(CHARTSHEETCONTENT())).parse(stream)
+
 
 class OBJ(BaseParser):
     # OBJ = Obj *Continue *CHART
@@ -698,7 +704,8 @@ class SERIESDATA(BaseParser):
                                                                          Blank(), Label()))), 
                                                           min=3, max=3))
 
-class CodeName(BaseParser): pass
+class CodeName(BaseParser):
+    PARSER = Term(xlsrecord.CodeName)
 
 class Window2(BaseParser):
     PARSER = Term(xlsrecord.Window2)
@@ -828,7 +835,9 @@ class Blank(BaseParser): pass
 class MulBlank(BaseParser):
     PARSER = Term(xlsrecord.MulBlank)
 
-class Rk(BaseParser): pass
+class Rk(BaseParser):
+    PARSER = Term(xlsrecord.RK)
+
 class MulRk(BaseParser): pass
 class BoolErr(BaseParser): pass
 class Number(BaseParser): pass
@@ -949,8 +958,12 @@ class XlsParser(BaseParser):
                     parsed = parser.parse(stream) # skipping the unknown stream
                     parsedList.append(parsed)
             except ParseException:
-                print ("Parse failed, previous token is [%s], next tokens are [%s]" % (stream.tokens[stream.currentIndex-1], 
-                                                                                       ','.join(map(str,stream.tokens[stream.currentIndex:stream.currentIndex+5]))))
+                print (
+                    """Parse failed, previous token is [%s], next tokens are [%s]
+                       the longest unfailed token seq is [%s]    
+                    """% (stream.tokens[stream.currentIndex-1], 
+                          ','.join(map(str,stream.tokens[stream.currentIndex:stream.currentIndex+5]),),
+                          ','.join(map(str,stream.tokens[stream.maxCurrentIndex-4:stream.maxCurrentIndex+1]),)))
                 raise
         return parsedList
     

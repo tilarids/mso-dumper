@@ -460,6 +460,10 @@ class FOPT:
             color.dumpXml(recHdl)
             recHdl.appendLine('</lineColor>')
 
+        def dumpData(self, strm, prop):
+            color = ColorRef(prop.value)
+            return ('line-color', {}, [color.dumpData()])
+
     class ShadowOffsetX:
 
         def appendLines(self, recHdl, prop, level):

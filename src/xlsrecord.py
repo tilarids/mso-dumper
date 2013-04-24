@@ -107,6 +107,10 @@ class RKAuxData(object):
     def __init__ (self):
         self.multi100 = False
         self.signedInt = False
+    
+    def dumpData(self):
+        return ('rk-aux-data', {'multi100': self.multi100,
+                                'signed-int': self.signedInt})
 
 def decodeRK (rkval, auxData = None):
     multi100  = ((rkval & 0x00000001) != 0)
@@ -1582,24 +1586,35 @@ class Protect(BaseRecordHandler):
 class RK(BaseRecordHandler):
     """Cell with encoded integer or floating-point value"""
 
-    def parseBytes (self):
-        row = globals.getSignedInt(self.bytes[0:2])
-        col = globals.getSignedInt(self.bytes[2:4])
-        xf  = globals.getSignedInt(self.bytes[4:6])
+    def __parseBytes (self):
+        self.row = globals.getSignedInt(self.bytes[0:2])
+        self.col = globals.getSignedInt(self.bytes[2:4])
+        self.xf  = globals.getSignedInt(self.bytes[4:6])
 
-        rkval = globals.getSignedInt(self.bytes[6:10])
-        auxData = RKAuxData()
-        realVal = decodeRK(rkval, auxData)
+        self.rkval = globals.getSignedInt(self.bytes[6:10])
+        self.auxData = RKAuxData()
+        self.realVal = decodeRK(self.rkval, self.auxData)
 
-        self.appendCellPosition(col, row)
-        self.appendLine("XF record ID: %d"%xf)
-        self.appendLine("multiplied by 100: %d"%auxData.multi100)
-        if auxData.signedInt:
+
+    def parseBytes(self):
+        self.__parseBytes()
+        self.appendCellPosition(self.col, self.row)
+        self.appendLine("XF record ID: %d" % self.xf)
+        self.appendLine("multiplied by 100: %d"% self.auxData.multi100)
+        if self.auxData.signedInt:
             self.appendLine("type: signed integer")
         else:
             self.appendLine("type: floating point")
-        self.appendLine("value: %g"%realVal)
+        self.appendLine("value: %g" % self.realVal)
 
+    def dumpData(self):
+        self.__parseBytes()
+        return ('rk', {'col': self.col,
+                       'row': self.row,
+                       'xf': self.xf,
+                       'rkval': self.rkval,
+                       'real-val': self.realVal},
+                       [self.auxData.dumpData()])
 class Scl(BaseRecordHandler):
 
     def __parseBytes (self):
@@ -2261,6 +2276,19 @@ class PLVMac(BaseRecordHandler):
                             "one-page": self.fOnePage,
                             "ruler": self.fRuler,
                             "print-scale-not-sheet-scale": self.fPrintScaleNotSheetScale})
+
+class CodeName(BaseRecordHandler):
+    def __parseBytes (self):
+        self.name  = self.readXLUnicodeString()
+
+    def parseBytes (self):
+        self.__parseBytes()
+        self.appendLine("Name: %s" % self.name)
+
+    def dumpData(self):
+        self.__parseBytes()
+        return ('code-name', {'value': self.name})
+
 
 class Name(BaseRecordHandler):
     """Internal defined name (aka Lbl)"""
