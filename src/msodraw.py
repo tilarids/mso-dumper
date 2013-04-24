@@ -308,6 +308,13 @@ class FDGSL:
         for shape in self.shapesSelected:
             recHdl.appendLine("  ID of shape selected: %d"%shape)
 
+    def dumpData(self, rh):
+        return ('fdgsl', {"cpsp": self.cpsp,
+                          "dgslk": self.dgslk,
+                          "dgslk-description": globals.getValueOrUnknown(FDGSL.selectionMode, self.dgslk),
+                          "shape-focus": self.shapeFocus},
+                          [('spid', {'value': x}) for x in self.shapesSelected])
+
 
 class FOPT:
     """property table for a shape instance"""
@@ -901,6 +908,18 @@ class FClientAnchorSheet:
         obj = xlsmodel.Shape(self.col1, self.row1, self.dx1, self.dy1, self.col2, self.row2, self.dx2, self.dy2)
         sheet.addShape(obj)
 
+    def dumpData(self, rh):
+        return ('f-client-anchor-sheet', {"move-with-cells": self.moveWithCells,
+                                          "resize-with-cells": self.resizeWithCells,
+                                          "col1": self.col1,
+                                          "dx1": self.dx1,
+                                          "row1": self.row1,
+                                          "dy1": self.dy1,
+                                          "col2": self.col2,
+                                          "dx2": self.dx2,
+                                          "row2": self.row2,
+                                          "dy2": self.dy2})
+
 class OfficeArtClientAnchor:
     """Word-specific anchor data."""
 
@@ -993,11 +1012,11 @@ class MSODrawHandler(globals.ByteStream):
         children = []
         while not self.isEndOfRecord():
             rh = RecordHeader(self)
-            if rh.recVer == 0xF: # container
+            if rh.recVer == 0xF or rh.recType == 0xF011: # container or OfficeArtClientData
                 children.append(rh.dumpData())
             elif recData.has_key(rh.recType):
-                obj = recData[rh.recType](self)
-                children.append(('record', {}, [rh.dumpData(), obj.dumpData(rh)]))
+                objDump = recData[rh.recType](self).dumpData(rh)
+                children.append(('record', {}, [rh.dumpData(), objDump]))
             else:
                 # TODO: fix
                 bytes = self.readBytes(min(rh.recLen, self.size - self.pos))

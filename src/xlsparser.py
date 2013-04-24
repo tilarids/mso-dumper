@@ -316,7 +316,9 @@ class OBJ(BaseParser):
     # OBJ = Obj *Continue *CHART
     PARSER = Group('obj-group', Req(Obj()) << Many('conitnues', Continue()) << Many('charts', CHART()))
 
-class MsoDrawingSelection(BaseParser): pass        
+class MsoDrawingSelection(BaseParser):
+    PARSER = Term(xlsrecord.MSODrawingSelection)
+    
 
 class OBJECTS(BaseParser):
     #*(MSODRAWING *(TEXTOBJECT / OBJ)) [MsoDrawingSelection]
@@ -959,11 +961,10 @@ class XlsParser(BaseParser):
                     parsedList.append(parsed)
             except ParseException:
                 print (
-                    """Parse failed, previous token is [%s], next tokens are [%s]
-                       the longest unfailed token seq is [%s]    
-                    """% (stream.tokens[stream.currentIndex-1], 
-                          ','.join(map(str,stream.tokens[stream.currentIndex:stream.currentIndex+5]),),
-                          ','.join(map(str,stream.tokens[stream.maxCurrentIndex-4:stream.maxCurrentIndex+1]),)))
+                    "Parse failed, previous token is [%s], next tokens are [%s] the maximum token seq is [%s]"% \
+                    (stream.tokens[stream.currentIndex-1], 
+                     ','.join(map(str,stream.tokens[stream.currentIndex:stream.currentIndex+5]),),
+                     ','.join(map(str,stream.tokens[stream.maxCurrentIndex-4:stream.maxCurrentIndex+1]),)))
                 raise
         return parsedList
     

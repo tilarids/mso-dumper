@@ -5901,7 +5901,6 @@ class MSODrawingGroup(BaseRecordHandler):
 
 
 class MSODrawingSelection(BaseRecordHandler):
-
     def __parseBytes (self):
         self.msodHdl = msodraw.MSODrawHandler(self.bytes, self)
 
@@ -5912,6 +5911,10 @@ class MSODrawingSelection(BaseRecordHandler):
     def fillModel (self, model):
         self.__parseBytes()
         self.msodHdl.fillModel(model)
+
+    def dumpData(self):
+        self.__parseBytes()
+        return self.msodHdl.dumpData()
 
 class GelFrame(BaseRecordHandler):
     def __parseBytes (self):
