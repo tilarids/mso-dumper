@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # -*- encoding: UTF-8 -*-
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
@@ -169,6 +169,21 @@ class Test(unittest.TestCase):
 
         levels = self.root.findall('stream[@name="WordDocument"]/fib/fibRgFcLcbBlob/lcbPlfLst/plfLst/lvl')
         self.assertEqual("•", levels[0].findall('xst/rgtchar')[0].attrib['value'])
+
+    def test_header(self):
+        self.dump('header')
+
+        firstHeader = self.root.findall('stream[@name="WordDocument"]/fib/fibRgFcLcbBlob/lcbPlcfHdd/plcfHdd/aCP[@index="7"]')
+        self.assertEqual("This is a header.\\x0D\\x0D", firstHeader[0].findall('transformed')[0].attrib['value'])
+
+    def test_headerlo(self):
+        self.dump('headerlo')
+
+        firstHeader = self.root.findall('stream[@name="WordDocument"]/fib/fibRgFcLcbBlob/lcbPlcfHdd/plcfHdd/aCP[@index="7"]')
+        self.assertEqual("This is a header.\\x0D\\x0D", firstHeader[0].findall('transformed')[0].attrib['value'])
+
+    def test_abi1157(self):
+        self.dump('abi1157-1')
 
 if __name__ == '__main__':
     unittest.main()

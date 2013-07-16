@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -21,19 +21,21 @@ class DOCDirStream:
         self.mainStream = mainStream
         self.doc = doc
     
-    def printAndSet(self, key, value, hexdump = True, end = True, offset = False, silent = False):
+    def printAndSet(self, key, value, hexdump = True, end = True, offset = False, silent = False, dict = None):
         setattr(self, key, value)
         if silent:
             return
+        attrs = ""
+        if dict:
+            attrs += ' name="%s"' % dict[value]
         if hexdump:
             value = hex(value)
-        offstr = ""
         if offset:
-            offstr += ' offset="%s"' % hex(self.pos)
+            attrs += ' offset="%s"' % hex(self.pos)
         if end:
-            print '<%s value="%s"%s/>' % (key, value, offstr)
+            print '<%s value="%s"%s/>' % (key, value, attrs)
         else:
-            print '<%s value="%s"%s>' % (key, value, offstr)
+            print '<%s value="%s"%s>' % (key, value, attrs)
 
     def quoteAttr(self, value):
         """Wrapper around xml.sax.saxutils.quoteattr, assumes the caller will put " around the result."""
@@ -76,6 +78,9 @@ class DOCDirStream:
         self.pos += 2
         return ret
 
+    def getuInt24(self):
+        return struct.unpack("<I", self.bytes[self.pos:self.pos+3] + "\x00")[0]
+
     def getuInt32(self, bytes = None, pos = None):
         if not bytes:
             bytes = self.bytes
@@ -112,9 +117,12 @@ class DOCDirStream:
         self.pos += 8
         return ret
 
-    def getString(self):
+    def getString(self, limit = None):
         bytes = []
+        count = 0
         while True:
+            if (not limit is None) and count == limit:
+                break
             i = self.readuInt8()
             j = self.readuInt8()
             if i != 0 or j != 0:
@@ -122,13 +130,14 @@ class DOCDirStream:
                 bytes.append(j)
             else:
                 break
+            count += 1
         return globals.getUTF8FromUTF16("".join(map(lambda x: chr(x), bytes)))
 
     def getBit(self, byte, bitNumber):
         return (byte & (1 << bitNumber)) >> bitNumber
 
     def dump(self):
-        print '<stream name="%s" size="%s"/>' % (globals.encodeName(self.name), self.size)
+        print '<stream name="%s" size="%s"/>' % (self.quoteAttr(globals.encodeName(self.name)), self.size)
 
     # compat methods to make msodraw happy
     def readUnsignedInt(self, size):

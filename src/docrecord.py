@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -29,23 +29,6 @@ class FcCompressed(DOCDirStream):
         self.printAndSet("fCompressed", self.fCompressed)
         self.printAndSet("r1", self.r1)
         print '</fcCompressed>'
-
-    def getTransformedValue(self, start, end, logicalPositions = True, logicalLength = True):
-        offset = self.fc
-        if self.fCompressed:
-            offset = self.fc/2
-        if logicalPositions:
-            fro = offset + start
-            to = offset + end
-        else:
-            fro = start
-            to = end
-        if self.fCompressed:
-            return globals.encodeName(self.mainStream.bytes[fro:to])
-        else:
-            if logicalLength:
-                to += (to - fro)
-            return globals.encodeName(self.mainStream.bytes[fro:to].decode('utf-16'), lowOnly = True)
 
 class Pcd(DOCDirStream):
     """The Pcd structure specifies the location of text in the WordDocument Stream and additional properties for this text."""
@@ -116,7 +99,7 @@ class FBKF(DOCDirStream):
 class PlcfBkf(DOCDirStream, PLC):
     """A PLCFBKF is a PLC whose data elements are FBKF structures."""
     def __init__(self, mainStream, offset, size):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes, mainStream = mainStream)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream = mainStream)
         PLC.__init__(self, size, 4) # 4 is defined by 2.8.10
         self.pos = offset
         self.size = size
@@ -124,11 +107,10 @@ class PlcfBkf(DOCDirStream, PLC):
 
     def dump(self):
         print '<plcfBkf type="PlcfBkf" offset="%d" size="%d bytes">' % (self.pos, self.size)
-        offset = self.mainStream.fcMin
         pos = self.pos
         for i in range(self.getElements()):
             # aCp
-            start = offset + self.getuInt32(pos = pos)
+            start = self.getuInt32(pos = pos)
             self.aCP.append(start)
             print '<aCP index="%d" bookmarkStart="%d">' % (i, start)
             pos += 4
@@ -170,14 +152,13 @@ class Fld(DOCDirStream):
 class PlcFld(DOCDirStream, PLC):
     """The Plcfld structure specifies the location of fields in the document."""
     def __init__(self, mainStream):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes, mainStream = mainStream)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream = mainStream)
         PLC.__init__(self, mainStream.lcbPlcfFldMom, 2) # 2 is defined by 2.8.25
         self.pos = mainStream.fcPlcfFldMom
         self.size = mainStream.lcbPlcfFldMom
 
     def dump(self):
         print '<plcFld type="PlcFld" offset="%d" size="%d bytes">' % (self.pos, self.size)
-        offset = self.mainStream.fcMin # 2.8.25: CPs relative to the start of that document part.
         pos = self.pos
         aFlds = []
         for i in range(self.getElements()):
@@ -192,10 +173,10 @@ class PlcFld(DOCDirStream, PLC):
 
             # This is a separator and the previous was a start: display the field instructions.
             if aFld.fldch.ch == 0x14 and aFlds[-1][1].fldch.ch == 0x13:
-                print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveText(offset + aFlds[-1][0] + 1, offset + value))
+                print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveCPs(aFlds[-1][0] + 1, value))
             # This is an end and the previous was a separator: display the field result.
             elif aFld.fldch.ch == 0x15 and aFlds[-1][1].fldch.ch == 0x14:
-                print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveText(offset + aFlds[-1][0] + 1, offset + value))
+                print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveCPs(aFlds[-1][0] + 1, value))
             aFlds.append((value, aFld))
             print '</aCP>'
         print '</plcFld>'
@@ -203,7 +184,7 @@ class PlcFld(DOCDirStream, PLC):
 class PlcfBkl(DOCDirStream, PLC):
     """The Plcfbkl structure is a PLC that contains only CPs and no additional data."""
     def __init__(self, mainStream, offset, size, start):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes, mainStream = mainStream)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream = mainStream)
         PLC.__init__(self, size, 0) # 0 is defined by 2.8.12
         self.pos = offset
         self.size = size
@@ -211,14 +192,13 @@ class PlcfBkl(DOCDirStream, PLC):
 
     def dump(self):
         print '<plcfBkl type="PlcfBkl" offset="%d" size="%d bytes">' % (self.pos, self.size)
-        offset = self.mainStream.fcMin
         pos = self.pos
         for i in range(self.getElements()):
             # aCp
-            end = offset + self.getuInt32(pos = pos)
+            end = self.getuInt32(pos = pos)
             print '<aCP index="%d" bookmarkEnd="%d">' % (i, end)
             start = self.start.aCP[i]
-            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveText(start, end))
+            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveCPs(start, end))
             pos += 4
             print '</aCP>'
         print '</plcfBkl>'
@@ -253,7 +233,7 @@ class PlcPcd(DOCDirStream, PLC):
             start, end = self.ranges[i]
             print '<aCP index="%d" start="%d" end="%d">' % (i, start, end)
             self.aPcd[i].dump()
-            print '<transformed value="%s"/>' % self.quoteAttr(self.aPcd[i].fc.getTransformedValue(start, end))
+            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveCPs(start, end))
             print '</aCP>'
         print '</plcPcd>'
 
@@ -293,14 +273,13 @@ class Sed(DOCDirStream):
 class PlcfSed(DOCDirStream, PLC):
     """The PlcfSed structure is a PLC structure where the data elements are Sed structures."""
     def __init__(self, mainStream, offset, size):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes, mainStream = mainStream)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream = mainStream)
         PLC.__init__(self, size, Sed.size)
         self.pos = offset
         self.size = size
 
     def dump(self):
         print '<plcfSed type="PlcfSed" offset="%d" size="%d bytes">' % (self.pos, self.size)
-        offset = self.mainStream.fcMin
         pos = self.pos
         for i in range(self.getElements()):
             # aCp
@@ -313,14 +292,14 @@ class PlcfSed(DOCDirStream, PLC):
             aSed = Sed(self, self.getOffset(self.pos, i))
             aSed.dump()
 
-            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveText(offset + start, offset + end, logicalLength = True))
+            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveCPs(start, end))
             print '</aCP>'
         print '</plcfSed>'
 
 class Tcg(DOCDirStream):
     """The Tcg structure specifies command-related customizations."""
     def __init__(self, mainStream, offset, size):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes)
         self.pos = offset
         self.size = size
 
@@ -358,9 +337,10 @@ class Sty(DOCDirStream):
         self.parent.pos = self.pos
 
 class Selsf(DOCDirStream):
+    size = 36 # defined by 2.9.241
     """The Selsf structure specifies the last selection that was made to the document."""
     def __init__(self, mainStream):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes)
         self.pos = mainStream.fcWss
         self.size = mainStream.lcbWss
         self.mainStream = mainStream
@@ -401,7 +381,7 @@ class Selsf(DOCDirStream):
         self.printAndSet("cpAnchorShrink", self.readuInt32())
         self.printAndSet("xaTableLeft", self.readInt16())
         self.printAndSet("xaTableRight", self.readInt16())
-        assert self.pos == self.mainStream.fcWss + self.size
+        assert self.pos == self.mainStream.fcWss + Selsf.size
         print '</selsf>'
 
 class BRC(DOCDirStream):
@@ -434,6 +414,7 @@ class PChgTabsDel(DOCDirStream):
     """The PChgTabsDel structure specifies the locations at which custom tab stops are ignored."""
     def __init__(self, parent):
         DOCDirStream.__init__(self, parent.bytes)
+        self.parent = parent
         self.pos = parent.pos
 
     def dump(self):
@@ -442,19 +423,37 @@ class PChgTabsDel(DOCDirStream):
         if self.cTabs != 0:
             print '<todo what="PChgTabsDel::dump() cTabs is non-zero"/>'
         print '</pchgTabsDel>'
+        self.parent.pos = self.pos
+
+class PChgTabsDelClose(DOCDirStream):
+    """The PChgTabsDelClose structure specifies the locations at which custom tab stops are ignored."""
+    def __init__(self, parent):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.parent = parent
+        self.pos = parent.pos
+
+    def dump(self):
+        print '<pchgTabsDelClose type="PChgTabsDelClose" offset="%d">' % self.pos
+        self.printAndSet("cTabs", self.readuInt8())
+        if self.cTabs != 0:
+            print '<todo what="PChgTabsDelClose::dump() cTabs is non-zero"/>'
+        print '</pchgTabsDelClose>'
+        self.parent.pos = self.pos
 
 class PChgTabsAdd(DOCDirStream):
     """The PChgTabsAdd structure specifies the locations and properties of custom tab stops."""
     def __init__(self, parent):
         DOCDirStream.__init__(self, parent.bytes)
+        self.parent = parent
         self.pos = parent.pos
 
     def dump(self):
         print '<pchgTabsAdd type="PChgTabsAdd" offset="%d">' % self.pos
         self.printAndSet("cTabs", self.readuInt8())
-        if self.cTabs != 0:
-            print '<todo what="PChgTabsAdd::dump() cTabs is non-zero"/>'
+        for i in range(self.cTabs):
+            print '<rgdxaDel index="%d" value="%d"/>' % (i, self.readuInt16())
         print '</pchgTabsAdd>'
+        self.parent.pos = self.pos
 
 class PChgTabsPapxOperand(DOCDirStream):
     """The PChgTabsPapxOperand structure is used by sprmPChgTabsPapx to specify custom tab stops to be added or ignored."""
@@ -468,6 +467,285 @@ class PChgTabsPapxOperand(DOCDirStream):
         PChgTabsDel(self).dump()
         PChgTabsAdd(self).dump()
         print '</pchgTabsPapxOperand>'
+
+class PChgTabsOperand(DOCDirStream):
+    """The PChgTabsOperand structure is used by sprmPChgTabs to specify a list
+    of custom tab stops to add and another list of custom tab stops to
+    ignore."""
+    def __init__(self, parent):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.pos = parent.pos
+
+    def dump(self):
+        print '<pchgTabsOperand type="PChgTabsOperand" offset="%d">' % self.pos
+        self.printAndSet("cb", self.readuInt8())
+        PChgTabsDelClose(self).dump()
+        PChgTabsAdd(self).dump()
+        print '</pchgTabsOperand>'
+
+# The Ico structure specifies an entry in the color palette that is listed in the following table.
+Ico = {
+        0x00: "Red: 0x00, Green: 0x00, Blue: 0x00, fAuto: 0xFF",
+        0x01: "Red: 0x00, Green: 0x00, Blue: 0x00, fAuto: 0x00",
+        0x02: "Red: 0x00, Green: 0x00, Blue: 0xFF, fAuto: 0x00",
+        0x03: "Red: 0x00, Green: 0xFF, Blue: 0xFF, fAuto: 0x00",
+        0x04: "Red: 0x00, Green: 0xFF, Blue: 0x00, fAuto: 0x00",
+        0x05: "Red: 0xFF, Green: 0x00, Blue: 0xFF, fAuto: 0x00",
+        0x06: "Red: 0xFF, Green: 0x00, Blue: 0x00, fAuto: 0x00",
+        0x07: "Red: 0xFF, Green: 0xFF, Blue: 0x00, fAuto: 0x00",
+        0x08: "Red: 0xFF, Green: 0xFF, Blue: 0xFF, fAuto: 0x00",
+        0x09: "Red: 0x00, Green: 0x00, Blue: 0x80, fAuto: 0x00",
+        0x0A: "Red: 0x00, Green: 0x80, Blue: 0x80, fAuto: 0x00",
+        0x0B: "Red: 0x00, Green: 0x80, Blue: 0x00, fAuto: 0x00",
+        0x0C: "Red: 0x80, Green: 0x00, Blue: 0x80, fAuto: 0x00",
+        0x0D: "Red: 0x80, Green: 0x00, Blue: 0x80, fAuto: 0x00",
+        0x0E: "Red: 0x80, Green: 0x80, Blue: 0x00, fAuto: 0x00",
+        0x0F: "Red: 0x80, Green: 0x80, Blue: 0x80, fAuto: 0x00",
+        0x10: "Red: 0xC0, Green: 0xC0, Blue: 0xC0, fAuto: 0x00",
+        }
+
+# The Ipat enumeration is an index to a shading pattern.
+Ipat = {
+        0x0000: "ipatAuto",
+        0x0001: "ipatSolid",
+        0x0002: "ipatPct5",
+        0x0003: "ipatPct10",
+        0x0004: "ipatPct20",
+        0x0005: "ipatPct25",
+        0x0006: "ipatPct30",
+        0x0007: "ipatPct40",
+        0x0008: "ipatPct50",
+        0x0009: "ipatPct60",
+        0x000A: "ipatPct70",
+        0x000B: "ipatPct75",
+        0x000C: "ipatPct80",
+        0x000D: "ipatPct90",
+        0x000E: "ipatDkHorizontal",
+        0x000F: "ipatDkVertical",
+        0x0010: "ipatDkForeDiag",
+        0x0011: "ipatDkBackDiag",
+        0x0012: "ipatDkCross",
+        0x0013: "ipatDkDiagCross",
+        0x0014: "ipatHorizontal",
+        0x0015: "ipatVertical",
+        0x0016: "ipatForeDiag",
+        0x0017: "ipatBackDiag",
+        0x0018: "ipatCross",
+        0x0019: "ipatDiagCross",
+        0x0023: "ipatPctNew2",
+        0x0024: "ipatPctNew7",
+        0x0025: "ipatPctNew12",
+        0x0026: "ipatPctNew15",
+        0x0027: "ipatPctNew17",
+        0x0028: "ipatPctNew22",
+        0x0029: "ipatPctNew27",
+        0x002A: "ipatPctNew32",
+        0x002B: "ipatPctNew35",
+        0x002C: "ipatPctNew37",
+        0x002D: "ipatPctNew42",
+        0x002E: "ipatPctNew45",
+        0x002F: "ipatPctNew47",
+        0x0030: "ipatPctNew52",
+        0x0031: "ipatPctNew55",
+        0x0032: "ipatPctNew57",
+        0x0033: "ipatPctNew62",
+        0x0034: "ipatPctNew65",
+        0x0035: "ipatPctNew67",
+        0x0036: "ipatPctNew72",
+        0x0037: "ipatPctNew77",
+        0x0038: "ipatPctNew82",
+        0x0039: "ipatPctNew85",
+        0x003A: "ipatPctNew87",
+        0x003B: "ipatPctNew92",
+        0x003C: "ipatPctNew95",
+        0x003D: "ipatPctNew97",
+        0xFFFF: "ipatNil"
+        }
+
+class Shd80(DOCDirStream):
+    """The Shd80 structure specifies the colors and pattern that are used for background shading."""
+    size = 2 # in bytes, see 2.9.245
+    def __init__(self, parent):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.pos = parent.pos
+        self.parent = parent
+
+    def dump(self):
+        print '<shd80 type="Shd80" offset="%d">' % self.pos
+        buf = self.readuInt16()
+        self.printAndSet("icoFore",   buf & 0x001f, dict = Ico) # 1..5th bits
+        self.printAndSet("icoBack",  (buf & 0x03e0) >> 5, dict = Ico) # 6..10th bits
+        self.printAndSet("ipat",     (buf & 0xfc00) >> 10, dict = Ipat) # 11.16th bits
+        print '</shd80>'
+        self.parent.pos = self.pos
+
+class DefTableShd80Operand(DOCDirStream):
+    """The DefTableSdh800Operand structure is an operand that is used by several Table Sprms to
+    specify each style of background shading that is applied to each of the cells in a single row."""
+    def __init__(self, parent):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.pos = parent.pos
+
+    def dump(self):
+        print '<defTableShd80Operand type="DefTableShd80Operand" offset="%d">' % self.pos
+        self.printAndSet("cb", self.readuInt8())
+        for i in xrange(self.cb / Shd80.size):
+            Shd80(self).dump()
+        print '</defTableShd80Operand>'
+
+class CMajorityOperand(DOCDirStream):
+    """The CMajorityOperand structure is used by sprmCMajority to specify which
+    character properties of the text to reset to match that of the underlying
+    paragraph style."""
+    def __init__(self, parent):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.pos = parent.pos
+
+    def dump(self):
+        print '<cMajorityOperand type="CMajorityOperand" offset="%d">' % self.pos
+        self.printAndSet("cb", self.readuInt8())
+        pos = 0
+        print '<grpprl offset="%d" size="%d bytes">' % (self.pos, self.cb)
+        while self.cb - pos > 0:
+            prl = Prl(self.bytes, self.pos + pos)
+            prl.dump()
+            pos += prl.getSize()
+        print '</grpprl>'
+        print '</cMajorityOperand>'
+
+# The PgbApplyTo enumeration is used to specify the pages to which a page border applies.
+PgbApplyTo = {
+        0x0: "pgbAllPages",
+        0x1: "pgbFirstPage",
+        0x2: "pgbAllButFirst"
+        }
+
+# The PgbOffsetFrom enumeration is used to specify the location from which the offset of a page
+# border is measured.
+PgbOffsetFrom = {
+        0x0: "pgbFromText",
+        0x1: "pgbFromEdge"
+        }
+
+# The PgbPageDepth enumeration is used to specify the "depth" of a page border in relation to other
+# page elements.
+PgbPageDepth = {
+        0x0: "pgbAtFront",
+        0x1: "pgbAtBack",
+        }
+
+class SPgbPropOperand(DOCDirStream):
+    """The SPgbPropOperand structure is the operand to sprmSPgbProp. It specifies the properties of a
+    page border."""
+    def __init__(self, parent):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.pos = parent.pos
+    
+    def dump(self):
+        print '<sPgbPropOperand type="SPgbPropOperand" offset="%d">' % self.pos
+        buf = self.readuInt8()
+        self.printAndSet("pgbApplyTo",     buf & 0x7,        dict = PgbApplyTo) # 1..3rd bits
+        self.printAndSet("pgbPageDepth",  (buf & 0x18) >> 3, dict = PgbPageDepth) # 4..5th bits
+        self.printAndSet("pgbOffsetFrom", (buf & 0xe0) >> 5, dict = PgbOffsetFrom) # 6..8th bits
+        self.printAndSet("reserved", self.readuInt8())
+        print '</sPgbPropOperand>'
+
+# The TextFlow enumeration specifies the rotation settings for a block of text and for the individual
+# East Asian characters in each line of the block.
+TextFlow = {
+        0x0000: "grpfTFlrtb",
+        0x0001: "grpfTFtbrl",
+        0x0003: "grpfTFbtlr",
+        0x0004: "grpfTFlrtbv",
+        0x0005: "grpfTFtbrlv"
+        }
+
+# The VerticalMergeFlag enumeration provides a 2-bit value that specifies whether a table cell is
+# merged with the cells above or below it.
+VerticalMergeFlag = {
+        0x00: "fvmClear",
+        0x01: "fvmMerge",
+        0x03: "fvmRestart"
+        }
+
+# The VerticalAlign enumeration specifies the vertical alignment of content within table cells.
+VerticalAlign = {
+        0x00: "vaTop",
+        0x01: "vaCenter",
+        0x02: "vaBottom",
+        }
+
+# The Fts enumeration specifies how the preferred width for a table, table indent, table cell, cell
+# margin, or cell spacing is defined.
+Fts = {
+        0x00: "ftsNil",
+        0x01: "ftsAuto",
+        0x02: "ftsPercent",
+        0x03: "ftsDxa",
+        0x13: "ftsDxaSys"
+        }
+
+class TCGRF(DOCDirStream):
+    """A TCGRF structure specifies the text layout and cell merge properties for a single cell in a table."""
+    def __init__(self, parent):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.parent = parent
+        self.pos = parent.pos
+
+    def dump(self):
+        print '<tcgrf type="TCGRF" offset="%d">' % self.pos
+        buf = self.readuInt16()
+        self.printAndSet("horzMerge", buf & 0x0003) # 1..2nd bits
+        self.printAndSet("textFlow",  (buf & 0x001c) >> 2, dict = TextFlow) # 3..6th bits
+        self.printAndSet("vertMerge", (buf & 0x0060) >> 6, dict = VerticalMergeFlag) # 7..8th bits
+        self.printAndSet("vertAlign", (buf & 0x0180) >> 8, dict = VerticalAlign) # 9..10th bits
+        self.printAndSet("ftsWidth",  (buf & 0x0e00) >> 10, dict = Fts) # 11..12th bits
+        self.printAndSet("fFitText", self.getBit(buf, 12))
+        self.printAndSet("fNoWrap", self.getBit(buf, 13))
+        self.printAndSet("fHideMark", self.getBit(buf, 14))
+        self.printAndSet("fUnused", self.getBit(buf, 15))
+        print '</tcgrf>'
+        self.parent.pos = self.pos
+
+class TC80(DOCDirStream):
+    """The TC80 structure specifies the border and other formatting for a single cell in a table."""
+    def __init__(self, parent, index):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.parent = parent
+        self.pos = parent.pos
+        self.index = index
+
+    def dump(self):
+        print '<tc80 index="%d">' % self.index
+        TCGRF(self).dump()
+        self.printAndSet("wWidth", self.readuInt16(), hexdump = False)
+        self.printAndSet("brcTop", self.readuInt32()) # TODO dump Brc80MayBeNil
+        self.printAndSet("brcLeft", self.readuInt32())
+        self.printAndSet("brcBottom", self.readuInt32())
+        self.printAndSet("brcRight", self.readuInt32())
+        print '</tc80>'
+        self.parent.pos = self.pos
+
+class TDefTableOperand(DOCDirStream):
+    """The TDefTableOperand structure is the operand that is used by the
+    sprmTDefTable value. It specifies the initial layout of the columns in the
+    current table row."""
+    def __init__(self, parent):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.pos = parent.pos
+
+    def dump(self):
+        print '<tDefTableOperand>'
+        self.printAndSet("cb", self.readuInt16())
+        size = self.pos + self.cb - 1
+        self.printAndSet("NumberOfColumns", self.readuInt8())
+        for i in range(self.NumberOfColumns + 1):
+            print '<rgdxaCenter index="%d" value="%d"/>' % (i, self.readInt16())
+        i = 0
+        while self.pos < size:
+            TC80(self, i).dump()
+            i += 1
+        print '</tDefTableOperand>'
 
 class BrcOperand(DOCDirStream):
     """The BrcOperand structure is the operand to several SPRMs that control borders."""
@@ -511,8 +789,10 @@ class Sprm(DOCDirStream):
             self.operand = self.getuInt8()
         elif self.getOperandSize() == 2:
             self.operand = self.getuInt16()
+            if self.sprm == 0x522f:
+                self.ct = SPgbPropOperand(self)
         elif self.getOperandSize() == 3:
-            self.operand = self.getuInt32() & 0x0fff
+            self.operand = self.getuInt24()
         elif self.getOperandSize() == 4:
             self.operand = self.getuInt32()
         elif self.getOperandSize() == 7:
@@ -522,8 +802,17 @@ class Sprm(DOCDirStream):
                 self.ct = BrcOperand(self)
             elif self.sprm == 0xc60d:
                 self.ct = PChgTabsPapxOperand(self)
+            elif self.sprm == 0xc615:
+                self.ct = PChgTabsOperand(self)
+            elif self.sprm == 0xd609:
+                self.ct = DefTableShd80Operand(self)
+            elif self.sprm == 0xca47:
+                self.ct = CMajorityOperand(self)
             else:
                 print '<todo what="Sprm::__init__() unhandled sprm of size 9"/>'
+        else:
+            if self.sprm == 0xd608:
+                self.ct = TDefTableOperand(self)
 
     def dump(self):
         sgcmap = {
@@ -583,11 +872,12 @@ class Prl(DOCDirStream):
     def __init__(self, bytes, offset):
         DOCDirStream.__init__(self, bytes)
         self.pos = offset
-
-    def dump(self):
-        print '<prl type="Prl" offset="%d">' % self.pos
+        self.posOrig = self.pos
         self.sprm = Sprm(self.bytes, self.pos)
         self.pos += 2
+
+    def dump(self):
+        print '<prl type="Prl" offset="%d">' % self.posOrig
         self.sprm.dump()
         print '</prl>'
 
@@ -677,7 +967,7 @@ class ChpxFkp(DOCDirStream):
             start = self.getuInt32(pos = pos)
             end = self.getuInt32(pos = pos + 4)
             print '<rgfc index="%d" start="%d" end="%d">' % (i, start, end)
-            print '<transformed value="%s"/>' % self.quoteAttr(self.pnFkpChpx.mainStream.retrieveText(start, end))
+            print '<transformed value="%s"/>' % self.quoteAttr(self.pnFkpChpx.mainStream.retrieveOffset(start, end))
             pos += 4
 
             # rgbx
@@ -706,7 +996,7 @@ class PapxFkp(DOCDirStream):
             start = self.getuInt32(pos = pos)
             end = self.getuInt32(pos = pos + 4)
             print '<rgfc index="%d" start="%d" end="%d">' % (i, start, end)
-            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveText(start, end))
+            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveOffset(start, end))
             pos += 4
 
             # rgbx
@@ -784,7 +1074,7 @@ class PnFkpPapx(DOCDirStream):
 class PlcBteChpx(DOCDirStream, PLC):
     """The PlcBteChpx structure is a PLC that maps the offsets of text in the WordDocument stream to the character properties of that text."""
     def __init__(self, mainStream):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes, mainStream=mainStream)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream=mainStream)
         PLC.__init__(self, mainStream.lcbPlcfBteChpx, 4)
         self.pos = mainStream.fcPlcfBteChpx
         self.size = mainStream.lcbPlcfBteChpx
@@ -805,23 +1095,69 @@ class PlcBteChpx(DOCDirStream, PLC):
             print '</aFC>'
         print '</plcBteChpx>'
 
+class PlcfHdd(DOCDirStream, PLC):
+    """The Plcfhdd structure is a PLC that contains only CPs and no additional data. It specifies where
+    header document stories begin and end."""
+    def __init__(self, mainStream):
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream=mainStream)
+        PLC.__init__(self, mainStream.lcbPlcfHdd, 0)
+        self.pos = mainStream.fcPlcfHdd
+        self.size = mainStream.lcbPlcfHdd
+
+    def getContents(self, i):
+        if i <= 5:
+            contentsMap = {
+                    0: "Footnote separator",
+                    1: "Footnote continuation separator",
+                    2: "Footnote continuation notice",
+                    3: "Endnote separator",
+                    4: "Endnote continuation separator",
+                    5: "Endnote continuation notice",
+                    }
+            return contentsMap[i]
+        else:
+            contentsMap = {
+                    0: "Even page header",
+                    1: "Odd page header",
+                    2: "Even page footer",
+                    3: "Odd page footer",
+                    4: "First page header",
+                    5: "First page footer",
+                    }
+            sectionIndex = i / 6
+            contentsIndex = i % 6
+            return "%s (section #%s)" % (contentsMap[contentsIndex], sectionIndex)
+
+    def dump(self):
+        print '<plcfHdd type="PlcfHdd" offset="%d" size="%d bytes">' % (self.pos, self.size)
+        offset = self.mainStream.getHeaderOffset()
+        pos = self.pos
+        for i in range(self.getElements() - 1):
+            start = self.getuInt32(pos = pos)
+            end = self.getuInt32(pos = pos + 4)
+            print '<aCP index="%d" contents="%s" start="%d" end="%d">' % (i, self.getContents(i), start, end)
+            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveCPs(offset + start, offset + end))
+            pos += 4
+            print '</aCP>'
+        print '</plcfHdd>'
+
 class PlcfandTxt(DOCDirStream, PLC):
     """The PlcfandTxt structure is a PLC that contains only CPs and no additional data."""
     def __init__(self, mainStream, offset, size):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes, mainStream=mainStream)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream=mainStream)
         PLC.__init__(self, size, 0)
         self.pos = offset
         self.size = size
 
     def dump(self):
         print '<plcfandTxt type="PlcfandTxt" offset="%d" size="%d bytes">' % (self.pos, self.size)
-        offset = self.mainStream.fcMin + self.mainStream.ccpText + self.mainStream.ccpFtn + self.mainStream.ccpHdd # TODO do this in a better way when headers are handled
+        offset = self.mainStream.getCommentOffset()
         pos = self.pos
         for i in range(self.getElements() - 1):
             start = self.getuInt32(pos = pos)
             end = self.getuInt32(pos = pos + 4)
             print '<aCP index="%d" start="%d" end="%d">' % (i, start, end)
-            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveText(offset + start, offset + end))
+            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveCPs(offset + start, offset + end))
             pos += 4
             print '</aCP>'
         print '</plcfandTxt>'
@@ -829,19 +1165,18 @@ class PlcfandTxt(DOCDirStream, PLC):
 class PlcfandRef(DOCDirStream, PLC):
     """The PlcfandRef structure is a PLC whose data elements are ATRDPre10 structures."""
     def __init__(self, mainStream, offset, size):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes, mainStream=mainStream)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream=mainStream)
         PLC.__init__(self, size, 30)
         self.pos = offset
         self.size = size
 
     def dump(self):
         print '<plcfandRef type="PlcfandRef" offset="%d" size="%d bytes">' % (self.pos, self.size)
-        offset = self.mainStream.fcMin
         pos = self.pos
         for i in range(self.getElements()):
-            start = offset + self.getuInt32(pos = pos)
-            print '<aCP index="%d" commentEndOffset="%d">' % (i, start)
-            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveText(start, start + 1))
+            start = self.getuInt32(pos = pos)
+            print '<aCP index="%d" commentEnd="%d">' % (i, start)
+            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveCP(start))
             pos += 4
 
             # aATRDPre10
@@ -892,6 +1227,48 @@ class Pcdt(DOCDirStream):
         self.plcPcd.dump()
         print '</pcdt>'
 
+class PrcData(DOCDirStream):
+    """The PrcData structure specifies an array of Prl elements and the size of
+    the array."""
+    def __init__(self, parent):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.pos = parent.pos
+
+        self.cbGrpprl = self.readInt16()
+        pos = 0
+        self.prls = []
+        while self.cbGrpprl - pos > 0:
+            prl = Prl(self.bytes, self.pos + pos)
+            pos += prl.getSize()
+            self.prls.append(prl)
+        self.pos += self.cbGrpprl
+        parent.pos = self.pos
+
+    def dump(self):
+        print '<prcData>'
+        self.printAndSet("cbGrpprl", self.cbGrpprl)
+        print '<grpPrl>'
+        for i in self.prls:
+            i.dump()
+        print '</grpPrl>'
+        print '</prcData>'
+
+class Prc(DOCDirStream):
+    """The Prc structure specifies a set of properties for document content
+    that is referenced by a Pcd structure."""
+    def __init__(self, parent):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.pos = parent.pos
+
+        self.clxt = self.readuInt8()
+        self.prcData = PrcData(self)
+        parent.pos = self.pos
+
+    def dump(self, index):
+        print '<prc index="%d">' % index
+        self.prcData.dump()
+        print '</prc>'
+
 class Clx(DOCDirStream):
     def __init__(self, bytes, mainStream, offset, size):
         DOCDirStream.__init__(self, bytes, mainStream=mainStream)
@@ -899,16 +1276,19 @@ class Clx(DOCDirStream):
         self.size = size
 
         self.firstByte = self.getuInt8()
-        if self.firstByte == 0x02:
-            self.pcdt = Pcdt(self.bytes, self.mainStream, self.pos, self.size)
+        self.prcs = []
+        while True:
+            self.firstByte = self.getuInt8()
+            if self.firstByte != 0x01:
+                break
+            self.prcs.append(Prc(self))
+        self.pcdt = Pcdt(self.bytes, self.mainStream, self.pos, self.size)
 
     def dump(self):
         print '<clx type="Clx" offset="%d" size="%d bytes">' % (self.pos, self.size)
-        if self.firstByte == 0x02:
-            print '<info what="Array of Prc, 0 elements"/>'
-            self.pcdt.dump()
-        else:
-            print '<todo what="Clx::dump() first byte is not 0x02"/>'
+        for index, elem in enumerate(self.prcs):
+            elem.dump(index)
+        self.pcdt.dump()
         print '</clx>'
 
 class Copts60(DOCDirStream):
@@ -1245,14 +1625,13 @@ class DopTypography(DOCDirStream):
 
         self.printAndSet("cchFollowingPunct", self.readInt16())
         self.printAndSet("cchLeadingPunct", self.readInt16())
-        if self.cchFollowingPunct != 0:
-            print '<todo what="DopTypography::dump(): cchFollowingPunct != 0 not handled"/>'
-        else:
-            self.pos += 202
-        if self.cchLeadingPunct != 0:
-            print '<todo what="DopTypography::dump(): cchLeadingPunct != 0 not handled"/>'
-        else:
-            self.pos += 102
+
+        self.printAndSet("rgxchFPunct", self.getString(self.cchFollowingPunct), hexdump = False)
+        self.pos += (202 - 2 * self.cchFollowingPunct)
+
+        self.printAndSet("rgxchLPunct", self.getString(self.cchLeadingPunct), hexdump = False)
+        self.pos += (102 - 2 * self.cchLeadingPunct)
+
         print '</dopTypography>'
         assert self.pos == self.dop.pos + DopTypography.size
         self.dop.pos = self.pos
@@ -1606,10 +1985,29 @@ class Dop2007(DOCDirStream):
         self.pos += 34
         print '</dop2007>'
 
+class RC4EncryptionHeader(DOCDirStream):
+    """The encryption header structure used for RC4 encryption."""
+    def __init__(self, fib, pos, size):
+        DOCDirStream.__init__(self, fib.getTableStream().bytes)
+        self.fib = fib
+        self.pos = pos
+        self.size = size
+
+    def dump(self):
+        print '<RC4EncryptionHeader>'
+        self.Salt = self.readBytes(16)
+        print '<Salt value="%s"/>' % globals.encodeName(self.Salt)
+        self.EncryptedVerifier = self.readBytes(16)
+        print '<EncryptedVerifier value="%s"/>' % globals.encodeName(self.EncryptedVerifier)
+        self.EncryptedVerifierHash = self.readBytes(16)
+        print '<EncryptedVerifierHash value="%s"/>' % globals.encodeName(self.EncryptedVerifierHash)
+        print '</RC4EncryptionHeader>'
+        assert self.pos == self.size
+
 class Dop(DOCDirStream):
     """The Dop structure contains the document and compatibility settings for the document."""
     def __init__(self, fib):
-        DOCDirStream.__init__(self, fib.doc.getDirectoryStreamByName("1Table").bytes)
+        DOCDirStream.__init__(self, fib.getTableStream().bytes)
         self.pos = fib.fcDop
         self.size = fib.lcbDop
         self.fib = fib
@@ -1715,7 +2113,7 @@ class SttbfFfn(DOCDirStream):
 class GrpXstAtnOwners(DOCDirStream):
     """This array contains the names of authors of comments in the document."""
     def __init__(self, mainStream):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes)
         self.pos = mainStream.fcGrpXstAtnOwners
         self.size = mainStream.lcbGrpXstAtnOwners
         self.mainStream = mainStream
@@ -1732,7 +2130,7 @@ class GrpXstAtnOwners(DOCDirStream):
 class SttbfAssoc(DOCDirStream):
     """The SttbfAssoc structure is an STTB that contains strings which are associated with this document."""
     def __init__(self, mainStream):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes)
         self.pos = mainStream.fcSttbfAssoc
         self.size = mainStream.lcbSttbfAssoc
         self.mainStream = mainStream
@@ -1764,17 +2162,23 @@ class SttbfAssoc(DOCDirStream):
         self.printAndSet("cbExtra", self.readuInt16())
         for i in range(self.cData):
             cchData = self.readuInt16()
-            print '<cchData index="%s" meaning="%s" offset="%d" size="%d bytes">' % (hex(i), indexMap[i], self.pos, cchData)
+            if i in indexMap.keys():
+                meaning = indexMap[i]
+            else:
+                meaning = "unknown"
+            print '<cchData index="%s" meaning="%s" offset="%d" size="%d bytes">' % (hex(i), meaning, self.pos, cchData)
             print '<string value="%s"/>' % globals.encodeName(self.bytes[self.pos:self.pos+2*cchData].decode('utf-16'), lowOnly = True)
             self.pos += 2*cchData
             print '</cchData>'
-        assert self.pos == self.mainStream.fcSttbfAssoc + self.size
+        # Probably this was cleared manually.
+        if self.cData != 0:
+            assert self.pos == self.mainStream.fcSttbfAssoc + self.size
         print '</sttbfAssoc>'
 
 class SttbfRMark(DOCDirStream):
     """The SttbfRMark structure is an STTB structure where the strings specify the names of the authors of the revision marks, comments, and e-mail messages in the document."""
     def __init__(self, mainStream):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes)
         self.pos = mainStream.fcSttbfRMark
         self.size = mainStream.lcbSttbfRMark
         self.mainStream = mainStream
@@ -1810,7 +2214,7 @@ class OfficeArtWordDrawing(DOCDirStream):
 class OfficeArtContent(DOCDirStream):
     """The OfficeArtContent structure specifies information about a drawing in the document."""
     def __init__(self, mainStream):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes)
         self.pos = mainStream.fcDggInfo
         self.size = mainStream.lcbDggInfo
         self.mainStream = mainStream
@@ -1821,6 +2225,10 @@ class OfficeArtContent(DOCDirStream):
         print '<Drawings type="main" offset="%d">' % self.pos
         OfficeArtWordDrawing(self).dump()
         print '</Drawings>'
+        if self.pos < self.mainStream.fcDggInfo + self.size:
+            print '<Drawings type="header" offset="%d">' % self.pos
+            OfficeArtWordDrawing(self).dump()
+            print '</Drawings>'
         assert self.pos == self.mainStream.fcDggInfo + self.size
         print '</officeArtContent>'
 
@@ -1841,7 +2249,7 @@ class ATNBE(DOCDirStream):
 class SttbfAtnBkmk(DOCDirStream):
     """The SttbfAtnBkmk structure is an STTB whose strings are all of zero length."""
     def __init__(self, mainStream, offset, size):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes)
         self.pos = offset
         self.size = size
 
@@ -2012,14 +2420,15 @@ class Stdf(DOCDirStream):
         self.stdfBase = StdfBase(self.bytes, self.mainStream, self.pos)
         self.stdfBase.dump()
         self.pos += self.stdfBase.size
-        stsh = self.std.lpstd.stsh # root of the stylesheet table
-        cbSTDBaseInFile = stsh.lpstshi.stshi.stshif.cbSTDBaseInFile
-        print '<stdfPost2000OrNone cbSTDBaseInFile="%s">' % hex(cbSTDBaseInFile)
-        if cbSTDBaseInFile == 0x0012:
-            stdfPost2000 = StdfPost2000(self)
-            stdfPost2000.dump()
-            self.pos = stdfPost2000.pos
-        print '</stdfPost2000OrNone>'
+        if self.pos - self.std.pos < self.std.size:
+            stsh = self.std.lpstd.stsh # root of the stylesheet table
+            cbSTDBaseInFile = stsh.lpstshi.stshi.stshif.cbSTDBaseInFile
+            print '<stdfPost2000OrNone cbSTDBaseInFile="%s">' % hex(cbSTDBaseInFile)
+            if cbSTDBaseInFile == 0x0012:
+                stdfPost2000 = StdfPost2000(self)
+                stdfPost2000.dump()
+                self.pos = stdfPost2000.pos
+            print '</stdfPost2000OrNone>'
         print '</stdf>'
 
 class Xst(DOCDirStream):
@@ -2265,6 +2674,7 @@ class STD(DOCDirStream):
         DOCDirStream.__init__(self, lpstd.bytes, mainStream = lpstd.mainStream)
         self.lpstd = lpstd
         self.pos = lpstd.pos
+        self.posOrig = self.pos
         self.size = lpstd.cbStd
 
     def dump(self):
@@ -2272,12 +2682,13 @@ class STD(DOCDirStream):
         self.stdf = Stdf(self)
         self.stdf.dump()
         self.pos = self.stdf.pos
-        xstzName = Xstz(self)
-        xstzName.dump()
-        self.pos = xstzName.pos
-        grLPUpxSw = GrLPUpxSw(self)
-        grLPUpxSw.dump()
-        self.pos = grLPUpxSw.pos
+        if self.pos - self.posOrig < self.size:
+            xstzName = Xstz(self)
+            xstzName.dump()
+            self.pos = xstzName.pos
+            grLPUpxSw = GrLPUpxSw(self)
+            grLPUpxSw.dump()
+            self.pos = grLPUpxSw.pos
         print '</std>'
 
 class LPStd(DOCDirStream):
@@ -2313,6 +2724,48 @@ class STSH(DOCDirStream):
             self.pos = lpstd.pos
             print '</rglpstd>'
         print '</stsh>'
+
+class Rca(DOCDirStream):
+    """The Rca structure is used to define the coordinates of a rectangular area in the document."""
+    def __init__(self, parent):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.parent = parent
+        self.pos = parent.pos
+
+    def dump(self):
+        print '<rca type="Rca" offset="%s">' % self.pos
+        self.printAndSet("left", self.readuInt32())
+        self.printAndSet("top", self.readuInt32())
+        self.printAndSet("right", self.readuInt32())
+        self.printAndSet("bottom", self.readuInt32())
+        print '</rca>'
+        self.parent.pos = self.pos
+
+class SPA(DOCDirStream):
+    """The Spa structure specifies information about the shapes and drawings that the document contains."""
+    size = 26 # defined by 2.8.37
+    def __init__(self, parent, offset):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.parent = parent
+        self.pos = offset
+
+    def dump(self):
+        pos = self.pos
+        print '<spa type="SPA" offset="%s" size="%d bytes">' % (self.pos, SPA.size)
+        self.printAndSet("lid", self.readuInt32())
+        Rca(self).dump()
+        buf = self.readuInt16()
+        self.printAndSet("fHdr", self.getBit(buf, 0)) # 1st bit
+        self.printAndSet("bx", (buf & 0x6) >> 1) # 2..3rd bits
+        self.printAndSet("by", (buf & 0x18) >> 3) # 4..5th bits
+        self.printAndSet("wr", (buf & 0x1e0) >> 5) # 6..9th bits
+        self.printAndSet("wrk", (buf & 0x1e00) >> 9) # 10..13th bits
+        self.printAndSet("fRcaSimple", self.getBit(buf, 13)) # 14th bit
+        self.printAndSet("fBelowText", self.getBit(buf, 14)) # 15th bit
+        self.printAndSet("fAnchorLock", self.getBit(buf, 15)) # 16th bit
+        self.printAndSet("cTxbx", self.readuInt32())
+        print '</spa>'
+        assert pos + SPA.size == self.pos
 
 class SPLS(DOCDirStream):
     """The SPLS structure specifies the current state of a range of text with regard to one of the language checking features."""
@@ -2351,14 +2804,13 @@ class SPLS(DOCDirStream):
 class PlcfSpl(DOCDirStream, PLC):
     """The Plcfspl structure is a Plc structure whose data elements are SpellingSpls structures."""
     def __init__(self, mainStream):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes, mainStream = mainStream)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream = mainStream)
         PLC.__init__(self, mainStream.lcbPlcfSpl, 2) # 2 is defined by 2.8.28
         self.pos = mainStream.fcPlcfSpl
         self.size = mainStream.lcbPlcfSpl
 
     def dump(self):
         print '<plcfSpl type="PlcfSpl" offset="%d" size="%d bytes">' % (self.pos, self.size)
-        offset = self.mainStream.fcMin
         pos = self.pos
         for i in range(self.getElements()):
             # aCp
@@ -2371,21 +2823,177 @@ class PlcfSpl(DOCDirStream, PLC):
             aSpellingSpls = SPLS("SpellingSpls", self, self.getOffset(self.pos, i))
             aSpellingSpls.dump()
 
-            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveText(offset + start, offset + end, logicalLength = True))
+            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveCPs(start, end))
             print '</aCP>'
         print '</plcfSpl>'
+
+class FTXBXNonReusable(DOCDirStream):
+    """The FTXBXNonReusable structure is used within the FTXBXS structure when that structure
+    describes a real textbox. A real textbox is any shape object into which text is added, and that is the
+    first or only shape in a linked chain."""
+    def __init__(self, parent):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.parent = parent
+        self.pos = parent.pos
+
+    def dump(self):
+        print '<ftxbxsunion type="FTXBXNonReusable" offset="%d" size="8 bytes">' % (self.pos)
+        self.printAndSet("cTxbx", self.readuInt32())
+        self.printAndSet("cTxbxEdit", self.readuInt32())
+        print '</ftxbxsunion>'
+        self.parent.pos = self.pos
+
+class FTXBXSReusable(DOCDirStream):
+    """The FTXBXSReusable structure is used within the FTXBXS structure when it describes a spare
+    structure that can be reused by the application and converted into an actual textbox."""
+    def __init__(self, parent):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.parent = parent
+        self.pos = parent.pos
+
+    def dump(self):
+        print '<ftxbxsunion type="FTXBXReusable" offset="%d" size="8 bytes">' % (self.pos)
+        self.printAndSet("iNextReuse", self.readuInt32())
+        self.printAndSet("cReusable", self.readuInt32())
+        print '</ftxbxsunion>'
+        self.parent.pos = self.pos
+
+
+class FTXBXS(DOCDirStream):
+    """Associates ranges of text from the Textboxes Document and the Header
+    Textboxes Document, with shape objects."""
+    size = 22 # 2.8.32
+    def __init__(self, parent, offset):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.parent = parent
+        self.pos = self.posOrig = offset
+
+    def dump(self):
+        print '<aFTXBXS type="FTXBXS" offset="%d" size="%d bytes">' % (self.pos, FTXBXS.size)
+        self.fReusable = self.getuInt16(pos = self.pos + 8)
+        if self.fReusable:
+            FTXBXSReusable(self).dump()
+        else:
+            FTXBXNonReusable(self).dump()
+        self.printAndSet("fReusable", self.readuInt16())
+        self.printAndSet("itxbxsDest", self.readuInt32())
+        self.printAndSet("lid", self.readuInt32())
+        self.printAndSet("txidUndo", self.readuInt32())
+        print '</aFTXBXS>'
+        if not self.fReusable:
+            assert self.posOrig + FTXBXS.size == self.pos
+
+class PlcftxbxTxt(DOCDirStream, PLC):
+    """Specifies which ranges of text are contained in which textboxes."""
+    def __init__(self, mainStream):
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream = mainStream)
+        PLC.__init__(self, mainStream.lcbPlcftxbxTxt, FTXBXS.size)
+        self.pos = mainStream.fcPlcftxbxTxt
+        self.size = mainStream.lcbPlcftxbxTxt
+
+    def dump(self):
+        print '<plcftxbxTxt type="PlcftxbxTxt" offset="%d" size="%d bytes">' % (self.pos, self.size)
+        offset = self.mainStream.getHeaderOffset()
+        pos = self.pos
+        for i in range(self.getElements() - 1):
+            # aCp
+            start = self.getuInt32(pos = pos)
+            end = self.getuInt32(pos = pos + 4)
+            print '<aCP index="%d" start="%d" end="%d">' % (i, start, end)
+            pos += 4
+
+            # aFTXBXS
+            aFTXBXS = FTXBXS(self, self.getOffset(self.pos, i))
+            aFTXBXS.dump();
+
+            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveCPs(offset + start, offset + end))
+            print '</aCP>'
+        print '</plcftxbxTxt>'
+
+class Tbkd(DOCDirStream):
+    """The Tbkd structure is used by the PlcftxbxBkd and PlcfTxbxHdrBkd structures to associate ranges of
+    text from the Textboxes Document and the Header Textboxes Document with FTXBXS objects."""
+    size = 6 # 2.9.309
+    def __init__(self, parent, offset):
+        DOCDirStream.__init__(self, parent.bytes)
+        self.parent = parent
+        self.pos = self.posOrig = offset
+
+    def dump(self):
+        print '<aTbkd type="Tbkd" offset="%d" size="%d bytes">' % (self.pos, Tbkd.size)
+        self.printAndSet("itxbxs", self.readuInt16())
+        self.printAndSet("dcpDepend", self.readuInt16())
+        buf = self.readuInt16()
+        self.printAndSet("reserved1", buf & 0x03ff) # 1..10th bits
+        self.printAndSet("fMarkDelete", self.getBit(buf, 10))
+        self.printAndSet("fUnk", self.getBit(buf, 11))
+        self.printAndSet("fTextOverflow", self.getBit(buf, 12))
+        self.printAndSet("reserved2", (buf & 0xe000) >> 13) # 14..16th bits
+        print '</aTbkd>'
+        assert self.posOrig + Tbkd.size == self.pos
+
+class PlcftxbxBkd(DOCDirStream, PLC):
+    """Specifies which ranges of text go inside which textboxes."""
+    def __init__(self, mainStream):
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream = mainStream)
+        PLC.__init__(self, mainStream.lcbPlcfTxbxBkd, 6)
+        self.pos = mainStream.fcPlcfTxbxBkd
+        self.size = mainStream.lcbPlcfTxbxBkd
+
+    def dump(self):
+        print '<plcftxbxBkd type="PlcftxbxBkd" offset="%d" size="%d bytes">' % (self.pos, self.size)
+        offset = self.mainStream.getHeaderOffset()
+        pos = self.pos
+        for i in range(self.getElements()):
+            # aCp
+            start = self.getuInt32(pos = pos)
+            end = self.getuInt32(pos = pos + 4)
+            print '<aCP index="%d" start="%d" end="%d">' % (i, start, end)
+            pos += 4
+
+            # aTbkd
+            Tbkd(self, self.getOffset(self.pos, i)).dump()
+            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveCPs(offset + start, offset + end))
+            print '</aCP>'
+        print '</plcftxbxBkd>'
+
+class PlcfSpa(DOCDirStream, PLC):
+    """The PlcfSpa structure is a PLC structure in which the data elements are
+    SPA structures."""
+    def __init__(self, mainStream, pos, size):
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream = mainStream)
+        PLC.__init__(self, size, 26) # 2.8.37
+        self.pos = pos
+        self.size = size
+
+    def dump(self):
+        print '<plcfSpa type="PlcfSpa" offset="%d" size="%d bytes">' % (self.pos, self.size)
+        pos = self.pos
+        for i in range(self.getElements()):
+            # aCp
+            start = self.getuInt32(pos = pos)
+            end = self.getuInt32(pos = pos + 4)
+            print '<aCP index="%d" start="%d" end="%d">' % (i, start, end)
+            pos += 4
+
+            # aSpa
+            aSpa = SPA(self, self.getOffset(self.pos, i))
+            aSpa.dump()
+
+            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveCPs(start, end))
+            print '</aCP>'
+        print '</plcfSpa>'
 
 class PlcfGram(DOCDirStream, PLC):
     """The PlcfGram structure is a Plc structure whose data elements are GrammarSpls structures."""
     def __init__(self, mainStream):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes, mainStream = mainStream)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream = mainStream)
         PLC.__init__(self, mainStream.lcbPlcfGram, 2) # 2 is defined by 2.8.21
         self.pos = mainStream.fcPlcfGram
         self.size = mainStream.lcbPlcfGram
 
     def dump(self):
         print '<plcfGram type="PlcfGram" offset="%d" size="%d bytes">' % (self.pos, self.size)
-        offset = self.mainStream.fcMin
         pos = self.pos
         for i in range(self.getElements()):
             # aCp
@@ -2398,7 +3006,7 @@ class PlcfGram(DOCDirStream, PLC):
             aGrammarSpls = SPLS("GrammarSpls", self, self.getOffset(self.pos, i))
             aGrammarSpls.dump()
 
-            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveText(offset + start, offset + end, logicalLength = True))
+            print '<transformed value="%s"/>' % self.quoteAttr(self.mainStream.retrieveCPs(start, end))
             print '</aCP>'
         print '</plcfGram>'
 
@@ -2493,7 +3101,7 @@ class LVL(DOCDirStream):
 class PlfLst(DOCDirStream):
     """The PlfLst structure contains the list formatting information for the document."""
     def __init__(self, mainStream):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes, mainStream = mainStream)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream = mainStream)
         self.pos = mainStream.fcPlfLst
         self.size = mainStream.lcbPlfLst
 
@@ -2549,7 +3157,7 @@ class LFOData(DOCDirStream):
 class PlfLfo(DOCDirStream):
     """The PlfLfo structure contains the list format override data for the document."""
     def __init__(self, mainStream):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes, mainStream = mainStream)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream = mainStream)
         self.pos = mainStream.fcPlfLfo
         self.size = mainStream.lcbPlfLfo
 
@@ -2571,7 +3179,7 @@ class PlfLfo(DOCDirStream):
 class SttbListNames(DOCDirStream):
     """The SttbListNames structure is an STTB structure whose strings are the names used by the LISTNUM field."""
     def __init__(self, mainStream):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes, mainStream=mainStream)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream=mainStream)
         self.pos = mainStream.fcSttbListNames
         self.size = mainStream.lcbSttbListNames
 
@@ -2586,13 +3194,12 @@ class SttbListNames(DOCDirStream):
             print '<string value="%s"/>' % globals.encodeName(self.bytes[self.pos:self.pos+2*cchData].decode('utf-16'), lowOnly = True)
             self.pos += 2*cchData
             print '</cchData>'
-        assert self.pos == self.mainStream.fcSttbListNames + self.size
         print '</sttbListNames>'
 
 class SttbSavedBy(DOCDirStream):
     """The SttbSavedBy structure is an STTB structure that specifies the save history of this document."""
     def __init__(self, mainStream):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes, mainStream=mainStream)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes, mainStream=mainStream)
         self.pos = mainStream.fcSttbSavedBy
         self.size = mainStream.lcbSttbSavedBy
 
@@ -2607,13 +3214,15 @@ class SttbSavedBy(DOCDirStream):
             print '<string value="%s"/>' % globals.encodeName(self.bytes[self.pos:self.pos+2*cchData].decode('utf-16'), lowOnly = True)
             self.pos += 2*cchData
             print '</cchData>'
-        assert self.pos == self.mainStream.fcSttbSavedBy + self.size
+        # Probably this was cleared manually.
+        if self.cData != 0:
+            assert self.pos == self.mainStream.fcSttbSavedBy + self.size
         print '</sttbSavedBy>'
 
 class SttbfBkmk(DOCDirStream):
     """The SttbfBkmk structure is an STTB structure whose strings specify the names of bookmarks."""
     def __init__(self, mainStream):
-        DOCDirStream.__init__(self, mainStream.doc.getDirectoryStreamByName("1Table").bytes)
+        DOCDirStream.__init__(self, mainStream.getTableStream().bytes)
         self.pos = mainStream.fcSttbfBkmk
         self.size = mainStream.lcbSttbfBkmk
         self.mainStream = mainStream

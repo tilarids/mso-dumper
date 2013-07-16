@@ -46,12 +46,19 @@ def emu_to_mm100(value):
 def emu_to_twip(value):
     return mm100_to_twip(emu_to_mm100(value))
 
+def hexdump(value):
+    ret = []
+    for i in value:
+        ret.append("%02x" % ord(i))
+    return "".join(ret)
+
 class RecordHeader:
 
     size = 8
 
     class Type:
         dggContainer            = 0xF000
+        BStoreContainer         = 0xF001
         dgContainer             = 0xF002
         spgrContainer           = 0xF003
         spContainer             = 0xF004
@@ -61,6 +68,7 @@ class RecordHeader:
         FSPGR                   = 0xF009
         FSP                     = 0xF00A
         FOPT                    = 0xF00B
+        FClientTextbox          = 0xF00D
         FClientAnchor           = 0xF010
         FClientData             = 0xF011
         FConnectorRule          = 0xF012
@@ -70,6 +78,7 @@ class RecordHeader:
 
     containerTypeNames = {
         Type.dggContainer:            'OfficeArtDggContainer',
+        Type.BStoreContainer:         'OfficeArtBStoreContainer',
         Type.dgContainer:             'OfficeArtDgContainer',
         Type.spContainer:             'OfficeArtSpContainer',
         Type.spgrContainer:           'OfficeArtSpgrContainer',
@@ -77,6 +86,7 @@ class RecordHeader:
         Type.FDG:                     'OfficeArtFDG',
         Type.FDGGBlock:               'OfficeArtFDGGBlock',
         Type.FOPT:                    'OfficeArtFOPT',
+        Type.FClientTextbox:          'OfficeArtClientTextbox',
         Type.FClientAnchor:           'OfficeArtClientAnchor',
         Type.FClientData:             'OfficeArtClientData',
         Type.FSP:                     'OfficeArtFSP',
@@ -332,6 +342,18 @@ class FOPT:
             self.I = (prop.value & 0x00080000) != 0
             self.J = (prop.value & 0x00100000) != 0
 
+        def __parseBytes(self, prop):
+            self.A = (prop.value & 0x00000001) != 0
+            self.B = (prop.value & 0x00000002) != 0
+            self.C = (prop.value & 0x00000004) != 0
+            self.D = (prop.value & 0x00000008) != 0
+            self.E = (prop.value & 0x00000010) != 0
+            self.F = (prop.value & 0x00010000) != 0
+            self.G = (prop.value & 0x00020000) != 0
+            self.H = (prop.value & 0x00040000) != 0
+            self.I = (prop.value & 0x00080000) != 0
+            self.J = (prop.value & 0x00100000) != 0
+
         def appendLines (self, recHdl, prop, level):
             self.__parseBytes(prop)
             recHdl.appendLineBoolean(indent(level) + "fit shape to text",     self.B)
@@ -349,6 +371,22 @@ class FOPT:
                                      'use-fit-shape-to-text': self.G,
                                      'use-auto-text-margin': self.I,
                                      'use-select-text': self.J})
+
+        def dumpXml(self, recHdl, prop):
+            self.__parseBytes(prop)
+            recHdl.appendLine('<textBooleanProperties>')
+            recHdl.appendLine('<fUsefSelectText value="%s"/>' % self.A)
+            recHdl.appendLine('<fUsefAutoTextMargin value="%s"/>' % self.B)
+            recHdl.appendLine('<unused2 value="%s"/>' % self.C)
+            recHdl.appendLine('<fUsefFitShapeToText value="%s"/>' % self.D)
+            recHdl.appendLine('<unused3 value="%s"/>' % self.E)
+            recHdl.appendLine('<fSelectText value="%s"/>' % self.F)
+            recHdl.appendLine('<fAutoTextMargin value="%s"/>' % self.G)
+            recHdl.appendLine('<unused5 value="%s"/>' % self.H)
+            recHdl.appendLine('<fFitShapeToText value="%s"/>' % self.I)
+            recHdl.appendLine('<unused6 value="%s"/>' % self.J)
+            recHdl.appendLine('</textBooleanProperties>')
+
     class CXStyle:
         style = [
             'straight connector',     # 0x00000000
@@ -360,6 +398,10 @@ class FOPT:
         def appendLines (self, recHdl, prop, level):
             styleName = globals.getValueOrUnknown(FOPT.CXStyle.style, prop.value)
             recHdl.appendLine(indent(level) + "connector style: %s (0x%8.8X)"%(styleName, prop.value))
+
+        def dumpXml(self, recHdl, prop):
+            styleName = globals.getValueOrUnknown(FOPT.CXStyle.style, prop.value)
+            recHdl.appendLine('<cxstyle name="%s" value="0x%8.8X"/>' % (styleName, prop.value))
 
     class FillColor:
 
@@ -471,6 +513,53 @@ class FOPT:
             color = ColorRef(prop.value)
             return ('line-color', {}, [color.dumpData()])
 
+    # Hack, can't inherit from nested class otherwise.
+    global UnicodeComplex
+
+    class UnicodeComplex:
+        """Base class for properties that have a null-terminated Unicode string
+        as a complex property."""
+
+        def __init__(self, name):
+            self.name = name
+
+        def __parseBytes(self, prop):
+            # A null-terminated Unicode string.
+            self.string = prop.extra[0:-2].decode('utf-16')
+
+        def appendLines(self, recHdl, prop, level):
+            self.__parseBytes(prop)
+            recHdl.appendLine(indent(level)+"%s: %s"%(self.name,self.string))
+
+        def dumpXml(self, recHdl, prop):
+            self.__parseBytes(prop)
+            recHdl.appendLine('<%s value="%s"/>' % (self.name, self.string))
+
+    class GtextUNICODE(UnicodeComplex):
+
+        def __init__(self):
+            UnicodeComplex.__init__(self, "gtextUNICODE")
+
+    class GtextFont(UnicodeComplex):
+
+        def __init__(self):
+            UnicodeComplex.__init__(self, "gtextFont")
+
+    class WzName(UnicodeComplex):
+
+        def __init__(self):
+            UnicodeComplex.__init__(self, "wzName")
+
+    class WzDescription(UnicodeComplex):
+
+        def __init__(self):
+            UnicodeComplex.__init__(self, "wzDescription")
+
+    class PibName(UnicodeComplex):
+
+        def __init__(self):
+            UnicodeComplex.__init__(self, "pibName")
+
     class ShadowOffsetX:
 
         def appendLines(self, recHdl, prop, level):
@@ -487,6 +576,16 @@ class FOPT:
         def dumpXml(self, recHdl, prop):
             recHdl.appendLine('<lineWidth value="%s" inTwips="%s"/>' % (prop.value, emu_to_twip(prop.value)))
 
+    class MetroBlob:
+        """The metroBlob property specifies alternative XML content for a
+        shape. This property specifies a binary serialization of an OPC
+        container. The package contains an OOXML DrawingML document."""
+
+        def appendLines(self, recHdl, prop, level):
+            recHdl.appendLine(indent(level)+"metroBlob: %s"%hexdump(prop.value))
+
+        def dumpXml(self, recHdl, prop):
+            recHdl.appendLine('<metroBlob value="%s"/>' % hexdump(prop.extra))
 
     class GroupShape:
 
@@ -544,12 +643,95 @@ class FOPT:
                 flag /= 2
             return ('group-shape', dict(flags))
 
+        def dumpXml(self, recHdl, prop):
+            flag = prop.value
+            flagCount = len(FOPT.GroupShape.flagNames)
+            for i in xrange(0, flagCount):
+                bval = (flag & 0x00000001)
+                recHdl.appendLine('<%s value="%s"/>' % (FOPT.GroupShape.flagNames[i], bval))
+                flag /= 2
+
+    class ShapeBooleanProperties:
+
+        # The order of the members is in the opposite order in the spec, but
+        # this seems to be the reality.
+        memberNames = [
+            'fBackground',
+            'reserved1',
+            'fInitiator',
+            'fLockShapeType',
+            'fPreferRelativeResize',
+            'fOleIcon',
+            'fFlipVOverride',
+            'fFlipHOverride',
+            'fPolicyBarcode',
+            'fPolicyLabel',
+            'unused1',
+            'unused2',
+            'unused3',
+            'fUsefBackground',
+            'unused4',
+            'fUsefInitiator',
+            'fUsefLockShapeType',
+            'fusePreferrelativeResize',
+            'fUsefOleIcon',
+            'fUsefFlipVOverride',
+            'fUsefFlipHOverride',
+            'fUsefPolicyBarcode',
+            'fUsefPolicyLabel',
+            'unused5',
+            'unused6',
+            'unused7',
+            ]
+
+        def __parseBytes(self, buf):
+            self.fBackground =                 buf & 0x00000001  # 1st bit
+            self.reserved1 =                  (buf & 0x00000002) >> 1 # 2nd bit
+            self.fInitiator =                 (buf & 0x00000004) >> 2 # 3rd bit
+            self.fLockShapeType =             (buf & 0x00000008) >> 3 # 4th bit
+            self.fPreferRelativeResize =      (buf & 0x00000010) >> 4 # 5th bit
+            self.fOleIcon =                   (buf & 0x00000020) >> 5 # 6th bit
+            self.fFlipVOverride =             (buf & 0x00000040) >> 6 # 7th bit
+            self.fFlipHOverride =             (buf & 0x00000080) >> 7 # 8th bit
+            self.fPolicyBarcode =             (buf & 0x00000100) >> 8 # 9th bit
+            self.fPolicyLabel =               (buf & 0x00000200) >> 9 # 10th bit
+            self.unused1 =                    (buf & 0x00000400) >> 10 # 11th bit
+            self.unused2 =                    (buf & 0x00000800) >> 11 # 12th bit
+            self.unused3 =                    (buf & 0x0000f000) >> 12 # 13..16th bits
+            self.fUsefBackground =            (buf & 0x00010000) >> 16 # 17th bit
+            self.unused4 =                    (buf & 0x00020000) >> 17 # 18th bit
+            self.fUsefInitiator =             (buf & 0x00040000) >> 18 # 19th bit
+            self.fUsefLockShapeType =         (buf & 0x00080000) >> 19 # 20th bit
+            self.fusePreferrelativeResize =   (buf & 0x00100000) >> 20 # 21th bit
+            self.fUsefOleIcon =               (buf & 0x00200000) >> 21 # 22th bit
+            self.fUsefFlipVOverride =         (buf & 0x00400000) >> 22 # 23th bit
+            self.fUsefFlipHOverride =         (buf & 0x00800000) >> 23 # 24th bit
+            self.fUsefPolicyBarcode =         (buf & 0x01000000) >> 24 # 25th bit
+            self.fUsefPolicyLabel =           (buf & 0x02000000) >> 25 # 26th bit
+            self.unused5 =                    (buf & 0x04000000) >> 26 # 27th bit
+            self.unused6 =                    (buf & 0x08000000) >> 27 # 28th bit
+            self.unused7 =                    (buf & 0xf0000000) >> 28 # 29..32th bits
+
+        def appendLines (self, recHdl, prop, level):
+            self.__parseBytes(prop.value)
+            for i in FOPT.ShapeBooleanProperties.memberNames:
+                recHdl.appendLine(indent(level)+"%s: %s"%(i, recHdl.getTrueFalse(getattr(self, i))))
+
+        def dumpXml(self, recHdl, prop):
+            self.__parseBytes(prop.value)
+            for i in FOPT.ShapeBooleanProperties.memberNames:
+                recHdl.appendLine('<%s value="%s"/>' % (i, getattr(self, i)))
+
     propTable = {
         0x00BF: ['Text Boolean Properties', TextBoolean],
+        0x00C0: ['gtextUNICODE', GtextUNICODE],
+        0x00C5: ['gtextFont', GtextFont],
         0x0181: ['Fill Color', FillColor],
         0x01BF: ['Fill Style Boolean Properties', FillStyle],
         0x01C0: ['Line Color', LineColor],
         0x0303: ['Connector Shape Style (cxstyle)', CXStyle],
+        0x0380: ['wzName', WzName],
+        0x0381: ['wzDescription', WzDescription],
         0x03BF: ['Group Shape Boolean Properties', GroupShape],
         0x0205: ['X Shadow Offset', ShadowOffsetX],
         0x01CB: ['Line Width', LineWidth],
@@ -563,7 +745,7 @@ class FOPT:
         0x023F: ['Shadow Style Boolean Properties'],
         0x01FF: ['Line Style Boolean Properties'],
         0x0304: ['Black-and-white Display Mode'],
-        0x033F: ['Shape Boolean Properties'],
+        0x033F: ['Shape Boolean Properties', ShapeBooleanProperties],
         0x0081: ['dxTextLeft'],
         0x0082: ['dxTextTop'],
         0x0083: ['dxTextRight'],
@@ -581,6 +763,22 @@ class FOPT:
         0x0390: ['posrelh'],
         0x0391: ['posv'],
         0x0392: ['posrelv'],
+        0x0004: ['rotation'],
+        0x00C3: ['gtextSize'],
+        0x00FF: ['Geometry Text Boolean Properties'],
+        0x0182: ['fillOpacity'],
+        0x053F: ['Diagram Boolean Properties'],
+        0x03A9: ['metroBlob', MetroBlob],
+        0x0105: ['pibName', PibName],
+        0x0085: ['WrapText'],
+        0x0087: ['anchorText'],
+        0x00C2: ['gtextAlign'],
+        0x0147: ['adjustValue'],
+        0x017F: ['Geometry Boolean Properties'],
+        0x0180: ['fillType'],
+        0x01C1: ['lineOpacity'],
+        0x01D6: ['lineJoinStyle'],
+        0x01D7: ['lineEndCapStyle'],
     }
 
     class E:
@@ -599,8 +797,9 @@ class FOPT:
         self.type = type
 
     def __parseBytes(self, rh):
+        complexPos = self.strm.pos + (rh.recInstance * 6)
         strm = globals.ByteStream(self.strm.readBytes(rh.recLen))
-        while not strm.isEndOfRecord():
+        for i in xrange(0, rh.recInstance):
             entry = FOPT.E()
             val = strm.readUnsignedInt(2)
             entry.ID          = (val & 0x3FFF)
@@ -608,9 +807,10 @@ class FOPT:
             entry.flagComplex = (val & 0x8000) # if true, the value stores the size of the extra bytes.
             entry.value = strm.readSignedInt(4)
             if entry.flagComplex:
-                if strm.pos + entry.value > strm.size:
+                if self.strm.pos + entry.value > self.strm.size:
                     break
-                entry.extra = strm.readBytes(entry.value)
+                entry.extra = self.strm.bytes[complexPos:complexPos+entry.value]
+                complexPos += entry.value
             self.properties.append(entry)
 
     def appendLines (self, recHdl, rh):
@@ -664,7 +864,7 @@ class FOPT:
                     if FOPT.propTable.has_key(prop.ID):
                         recHdl.appendLine('<op name="%s" value="0x%8.8X"/>' % (FOPT.propTable[prop.ID][0], prop.value))
                     else:
-                        recHdl.appendLine('<op value="0x%8.8X"/>' % prop.value)
+                        recHdl.appendLine('<op name="todo" value="0x%8.8X"/>' % prop.value)
                     if prop.flagComplex:
                         recHdl.appendLine('<todo what="FOPT: fComplex != 0 unhandled"/>')
             recHdl.appendLine('</rgfopte>')
@@ -856,6 +1056,47 @@ class FClientData:
         recHdl.appendLine('<clientData type="OfficeArtClientData">')
         recHdl.appendLine('<data value="0x%8.8X"/>' % self.data)
         recHdl.appendLine('</clientData>')
+
+class FClientTextbox:
+    def __init__ (self, strm):
+        self.data = strm.readUnsignedInt(4)
+
+    def appendLines (self, recHdl, rh):
+        recHdl.appendLine("FClientTextbox content")
+        recHdl.appendLine("  data: 0x%8.8X"%self.data)
+
+    def dumpXml(self, recHdl, model, rh):
+        recHdl.appendLine('<clientTextbox type="OfficeArtClientTextbox">')
+        recHdl.appendLine('<data value="0x%8.8X"/>' % self.data)
+        recHdl.appendLine('</clientTextbox>')
+
+class BStoreContainerFileBlock:
+    def __init__(self, parent):
+        self.strm = parent.strm
+        self.parent = parent
+
+    def dumpXml(self, recHdl, model):
+        rh = RecordHeader(self.strm)
+        rh.dumpXml(recHdl)
+        if rh.recType in recData:
+            child = recData[rh.recType](self)
+            child.dumpXml(self, model, rh)
+        else:
+            recHdl.appendLine('<todo what="BStoreContainerFileBlock: recType = %s unhandled (size: %d bytes)"/>' % (hex(rh.recType), rh.recLen))
+
+class BStoreContainer:
+    def __init__ (self, strm):
+        self.strm = strm
+
+    def appendLines (self, recHdl, rh):
+        recHdl.appendLine("BStoreContainer content")
+
+    def dumpXml(self, recHdl, model, rh):
+        recHdl.appendLine('<bStoreContainer type="OfficeArtBStoreContainer">')
+        for i in xrange(rh.recInstance):
+            bStoreContainerFileBlock = BStoreContainerFileBlock(self)
+            bStoreContainerFileBlock.dumpXml(recHdl, model)
+        recHdl.appendLine('</bStoreContainer>')
 
 class SplitMenuColorContainer:
     def __init__ (self, strm):
@@ -1063,8 +1304,10 @@ recData = {
     RecordHeader.Type.FDGSL: FDGSL,
     RecordHeader.Type.FClientAnchor: FClientAnchorSheet,
     RecordHeader.Type.FClientData: FClientData,
+    RecordHeader.Type.FClientTextbox: FClientTextbox,
     RecordHeader.Type.SplitMenuColorContainer: SplitMenuColorContainer,
     RecordHeader.Type.TertiaryFOPT: TertiaryFOPT,
+    RecordHeader.Type.BStoreContainer: BStoreContainer,
 }
 
 # vim:set filetype=python shiftwidth=4 softtabstop=4 expandtab:

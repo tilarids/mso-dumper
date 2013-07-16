@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -19,10 +19,10 @@ class DOCDumper:
 
     def dump(self):
         file = open(self.filepath, 'rb')
-        strm = docstream.DOCFile(file.read(), self.params)
+        strm = docstream.createDOCFile(file.read(), self.params)
         file.close()
         dirnames = strm.getDirectoryNames()
-        print '<?xml version="1.0"?>\n<streams>'
+        print '<?xml version="1.0"?>\n<streams ole-type="%s">' % strm.getName()
         for dirname in dirnames:
             if len(dirname) == 0 or dirname in ['Root Entry']:
                 continue

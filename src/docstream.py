@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -6,9 +6,13 @@
 #
 
 import ole
+import ctypes
 import struct
 from docdirstream import DOCDirStream
 import docrecord
+import globals
+import sys
+import bisect
 
 class DOCFile:
     """Represents the whole word file - feed will all bytes."""
@@ -17,8 +21,19 @@ class DOCFile:
         self.size = len(self.chars)
         self.params = params
 
-        self.header = ole.Header(self.chars, self.params)
-        self.pos = self.header.parse()
+        if ord(self.chars[0]) == 0xD0 and ord(self.chars[1]) == 0xCF and ord(self.chars[2]) == 0x11 and ord(self.chars[3]) == 0xE0:
+            self.initWW8()
+        else:
+            print '<?xml version="1.0"?>'
+            if ord(self.chars[0]) == 0xDB and ord(self.chars[1]) == 0xA5:
+                print '<todo what="handle v6 of the doc format"/>'
+            else:
+                print '<todo what="unhandled magic"/>'
+            sys.exit(0)
+
+    def initWW8(self):
+            self.header = ole.Header(self.chars, self.params)
+            self.pos = self.header.parse()
 
     def __getDirectoryObj(self):
         obj = self.header.getDirectory()
@@ -31,12 +46,67 @@ class DOCFile:
     def getDirectoryStreamByName(self, name):
         obj = self.__getDirectoryObj()
         bytes = obj.getRawStreamByName(name)
+        return self.getStreamFromBytes(name, bytes)
+
+    def getStreamFromBytes(self, name, bytes):
         if name == "WordDocument":
             return WordDocumentStream(bytes, self.params, doc=self)
-        if name == "1Table":
+        if name in ("0Table", "1Table"):
             return TableStream(bytes, self.params, name, doc=self)
         else:
             return DOCDirStream(bytes, self.params, name, doc=self)
+
+    def getName(self):
+        return "native"
+
+class GsfDOCFile(DOCFile):
+    """Same as DOCFile, but uses gsf to read the OLE streams."""
+    def __init__ (self, chars, params, gsf):
+        self.gsf = gsf
+        DOCFile.__init__(self, chars, params)
+
+    def initWW8(self):
+        self.streams = {}
+        self.gsf.gsf_init()
+        gsfInput = self.gsf.gsf_input_memory_new(self.chars, len(self.chars), False)
+        gsfInfile = self.gsf.gsf_infile_msole_new(gsfInput)
+        for i in range(self.gsf.gsf_infile_num_children(gsfInfile)):
+            child = self.gsf.gsf_infile_child_by_index(gsfInfile, i)
+            childName = ctypes.string_at(self.gsf.gsf_infile_name_by_index(gsfInfile,i))
+            childSize = self.gsf.gsf_input_size(child)
+            childData = ""
+            while True:
+                bufSize = 1024
+                pos = self.gsf.gsf_input_tell(child)
+                if pos == childSize:
+                    break
+                elif pos + bufSize > childSize:
+                    bufSize = childSize - pos
+                childData += ctypes.string_at(self.gsf.gsf_input_read(child, bufSize, None), bufSize)
+            self.streams[childName] = childData
+        self.gsf.gsf_shutdown()
+
+    def getDirectoryNames(self):
+        return self.streams.keys()
+
+    def getDirectoryStreamByName(self, name):
+        return self.getStreamFromBytes(name, self.streams[name])
+
+    def getName(self):
+        return "gsf"
+
+def createDOCFile(chars, params):
+    hasGsf = True
+    try:
+        gsf = ctypes.cdll.LoadLibrary('libgsf-1.so')
+        gsf.gsf_input_read.restype = ctypes.c_void_p
+    except:
+        hasGsf = False
+
+    if hasGsf:
+        return GsfDOCFile(chars, params, gsf)
+    else:
+        return DOCFile(chars, params)
 
 class TableStream(DOCDirStream):
     def __init__(self, bytes, params, name, doc):
@@ -56,7 +126,9 @@ class WordDocumentStream(DOCDirStream):
 
     def dumpFib(self):
         print '<fib>'
-        self.dumpFibBase("base")
+        if not self.dumpFibBase("base"):
+            print '</fib>'
+            return
         self.printAndSet("csw", self.readuInt16())
         self.dumpFibRgW97("fibRgW")
         self.printAndSet("cslw", self.readuInt16())
@@ -64,7 +136,14 @@ class WordDocumentStream(DOCDirStream):
         self.printAndSet("cbRgFcLcb", self.readuInt16())
 
         self.blobOffset = self.pos
-        self.nFibNew = self.__getFibNew()
+        cswNew = self.getuInt16(pos = self.__getCswNewOffset())
+
+        if cswNew != 0:
+            self.nFibNew = self.getuInt16(pos = self.__getCswNewOffset() + 2)
+            self.nFib = self.nFibNew
+        else:
+            self.nFibNew = 0
+
         self.dumpFibRgFcLcb("fibRgFcLcbBlob")
         self.pos = self.__getCswNewOffset()
 
@@ -73,13 +152,6 @@ class WordDocumentStream(DOCDirStream):
             self.dumpFibRgCswNew("fibRgCswNew")
         print '</fib>'
 
-    def __getFibNew(self):
-        cswNew = self.getuInt16(pos = self.__getCswNewOffset())
-        if cswNew == 0:
-            return 0
-        else:
-            return self.getuInt16(pos = self.__getCswNewOffset() + 2)
-    
     def __getCswNewOffset(self):
         return self.blobOffset + (8 * self.cbRgFcLcb)
 
@@ -110,11 +182,21 @@ class WordDocumentStream(DOCDirStream):
         self.printAndSet("lidThemeCS", self.readuInt16())
         print '</%s>' % name
 
+    def getTableStream(self):
+        if self.fWhichTblStm:
+            return self.doc.getDirectoryStreamByName("1Table")
+        else:
+            return self.doc.getDirectoryStreamByName("0Table")
+
     def dumpFibBase(self, name):
+        ret = True
         print '<%s type="FibBase" size="32 bytes">' % name
 
         self.printAndSet("wIdent", self.readuInt16())
         self.printAndSet("nFib", self.readuInt16())
+        if self.nFib >= 0x65 and self.nFib <= 0x69:
+            print '<todo what="handle nFib 0x65..0x69: ww6 syntax"/>'
+            ret = False
         self.printAndSet("unused", self.readuInt16())
         self.printAndSet("lid", self.readuInt16())
         self.printAndSet("pnNext", self.readuInt16())
@@ -138,7 +220,26 @@ class WordDocumentStream(DOCDirStream):
         self.printAndSet("fObfuscated", self.getBit(buf, 15))
 
         self.printAndSet("nFibBack", self.readuInt16())
-        self.printAndSet("lKey", self.readuInt32())
+
+        if self.fEncrypted == 1 and self.fObfuscated == 0:
+            self.printAndSet("lKey", self.readuInt32(), end = False)
+            print '<EncryptionVersionInfo>'
+            tableStream = self.getTableStream()
+            self.printAndSet("vMajor", tableStream.readuInt16())
+            self.printAndSet("vMinor", tableStream.readuInt16())
+            print '</EncryptionVersionInfo>'
+            if self.vMajor == 0x0001 and self.vMinor == 0x0001:
+                docrecord.RC4EncryptionHeader(self, tableStream.pos, self.lKey).dump()
+                print '<todo what="handle RC4 encryption"/>'
+            elif self.vMajor in (0x0002, 0x0003, 0x0004) and self.vMinor == 0x0002:
+                print '<todo what="handle RC4CryptoApiEncryptionHeader"/>'
+            else:
+                print '<todo what="unexpected vMajor %d and vMinor %d"/>' % (self.vMajor, self.vMinor)
+            print '</lKey>'
+            ret = False
+        else:
+            self.printAndSet("lKey", self.readuInt32())
+
         self.printAndSet("envr", self.readuInt8())
 
         buf = self.readuInt8()
@@ -152,11 +253,11 @@ class WordDocumentStream(DOCDirStream):
 
         self.printAndSet("reserved3", self.readuInt16())
         self.printAndSet("reserved4", self.readuInt16())
-        # reserved5 in the spec, offset of first character of text according to LO ww8 import filter
-        self.printAndSet("fcMin", self.readuInt32())
+        self.printAndSet("reserved5", self.readuInt32())
         self.printAndSet("reserved6", self.readuInt32())
 
         print '</%s>' % name
+        return ret
 
     def dumpFibRgW97(self, name):
         print '<%s type="FibRgW97" size="28 bytes">' % name
@@ -202,8 +303,14 @@ class WordDocumentStream(DOCDirStream):
     def dumpFibRgFcLcb(self, name):
         if self.nFib == 0x00c1:
             self.dumpFibRgFcLcb97(name)
+        elif self.nFib == 0x00d9:
+            self.dumpFibRgFcLcb2000(name)
         elif self.nFib == 0x0101:
             self.dumpFibRgFcLcb2002(name)
+        elif self.nFib == 0x010c:
+            self.dumpFibRgFcLcb2003(name)
+        elif self.nFib == 0x0112:
+            self.dumpFibRgFcLcb2007(name)
         else:
             print """<todo what="dumpFibRgFcLcb() doesn't know how to handle nFib = %s">""" % hex(self.nFib)
 
@@ -233,7 +340,7 @@ class WordDocumentStream(DOCDirStream):
             ["fcPlcfGlsy"],
             ["lcbPlcfGlsy"],
             ["fcPlcfHdd"],
-            ["lcbPlcfHdd"],
+            ["lcbPlcfHdd", self.handleLcbPlcfHdd],
             ["fcPlcfBteChpx"],
             ["lcbPlcfBteChpx", self.handleLcbPlcfBteChpx],
             ["fcPlcfBtePapx"],
@@ -291,9 +398,9 @@ class WordDocumentStream(DOCDirStream):
             ["fcUnused3"],
             ["lcbUnused3"],
             ["fcPlcSpaMom"],
-            ["lcbPlcSpaMom"],
+            ["lcbPlcSpaMom", self.handleLcbPlcSpaMom],
             ["fcPlcSpaHdr"],
-            ["lcbPlcSpaHdr"],
+            ["lcbPlcSpaHdr", self.handleLcbPlcfSpaHdr],
             ["fcPlcfAtnBkf"],
             ["lcbPlcfAtnBkf", self.handleLcbPlcfAtnBkf],
             ["fcPlcfAtnBkl"],
@@ -323,7 +430,7 @@ class WordDocumentStream(DOCDirStream):
             ["fcPlcfSpl"],
             ["lcbPlcfSpl", self.handleLcbPlcfSpl],
             ["fcPlcftxbxTxt"],
-            ["lcbPlcftxbxTxt"],
+            ["lcbPlcftxbxTxt", self.handleLcbPlcftxbxTxt],
             ["fcPlcfFldTxbx"],
             ["lcbPlcfFldTxbx"],
             ["fcPlcfHdrtxbxTxt"],
@@ -361,7 +468,7 @@ class WordDocumentStream(DOCDirStream):
             ["fcPlfLfo"],
             ["lcbPlfLfo", self.handleLcbPlfLfo],
             ["fcPlcfTxbxBkd"],
-            ["lcbPlcfTxbxBkd"],
+            ["lcbPlcfTxbxBkd", self.handleLcbPlcfTxbxBkd],
             ["fcPlcfTxbxHdrBkd"],
             ["lcbPlcfTxbxHdrBkd"],
             ["fcDocUndoWord9"],
@@ -404,7 +511,7 @@ class WordDocumentStream(DOCDirStream):
             value = self.readInt32()
             if i[0] == "fcClx":
                 self.printAndSet(i[0], value, silent = True)
-            if i[0] == "lcbClx":
+            elif i[0] == "lcbClx":
                 self.printAndSet(i[0], value, silent = True)
                 i[1](silent = True)
         self.pos = posOrig
@@ -414,8 +521,6 @@ class WordDocumentStream(DOCDirStream):
             hasHandler = len(i) > 1
             # the spec says these must be ignored
             needsIgnoring = ["lcbStshfOrig", "lcbPlcfBteLvc"]
-            if self.ccpHdd == 0:
-                needsIgnoring.append("lcbPlcfHdd")
             # a member needs handling if it defines the size of a struct and it's non-zero
             needsHandling = i[0].startswith("lcb") and value != 0 and (not i[0] in needsIgnoring)
             self.printAndSet(i[0], value, end = ((not hasHandler) and (not needsHandling)), offset = True)
@@ -433,9 +538,13 @@ class WordDocumentStream(DOCDirStream):
     def handleLcbClx(self, silent = False):
         offset = self.fcClx
         size = self.lcbClx
-        self.clx = docrecord.Clx(self.doc.getDirectoryStreamByName("1Table").bytes, self, offset, size)
+        self.clx = docrecord.Clx(self.getTableStream().bytes, self, offset, size)
         if not silent:
             self.clx.dump()
+
+    def handleLcbPlcfHdd(self):
+        plcfHdd = docrecord.PlcfHdd(self)
+        plcfHdd.dump()
 
     def handleLcbPlcfBteChpx(self):
         plcBteChpx = docrecord.PlcBteChpx(self)
@@ -444,19 +553,19 @@ class WordDocumentStream(DOCDirStream):
     def handleLcbPlcfBtePapx(self):
         offset = self.fcPlcfBtePapx
         size = self.lcbPlcfBtePapx
-        plcBtePapx = docrecord.PlcBtePapx(self.doc.getDirectoryStreamByName("1Table").bytes, self, offset, size)
+        plcBtePapx = docrecord.PlcBtePapx(self.getTableStream().bytes, self, offset, size)
         plcBtePapx.dump()
 
     def handleLcbSttbfFfn(self):
         offset = self.fcSttbfFfn
         size = self.lcbSttbfFfn
-        sttbfFfn = docrecord.SttbfFfn(self.doc.getDirectoryStreamByName("1Table").bytes, self, offset, size)
+        sttbfFfn = docrecord.SttbfFfn(self.getTableStream().bytes, self, offset, size)
         sttbfFfn.dump()
 
     def handleLcbStshf(self):
         offset = self.fcStshf
         size = self.lcbStshf
-        stsh = docrecord.STSH(self.doc.getDirectoryStreamByName("1Table").bytes, self, offset, size)
+        stsh = docrecord.STSH(self.getTableStream().bytes, self, offset, size)
         stsh.dump()
 
     def handleLcbPlcfandTxt(self):
@@ -534,6 +643,15 @@ class WordDocumentStream(DOCDirStream):
     def handleLcbPlcfSpl(self):
         docrecord.PlcfSpl(self).dump()
 
+    def handleLcbPlcftxbxTxt(self):
+        docrecord.PlcftxbxTxt(self).dump()
+
+    def handleLcbPlcSpaMom(self):
+        docrecord.PlcfSpa(self, self.fcPlcSpaMom, self.lcbPlcSpaMom).dump()
+
+    def handleLcbPlcfSpaHdr(self):
+        docrecord.PlcfSpa(self, self.fcPlcSpaHdr, self.lcbPlcSpaHdr).dump()
+
     def handleLcbPlcfGram(self):
         docrecord.PlcfGram(self).dump()
 
@@ -552,9 +670,32 @@ class WordDocumentStream(DOCDirStream):
     def handleLcbSttbfBkmk(self):
         docrecord.SttbfBkmk(self).dump()
 
+    def handleLcbPlcfTxbxBkd(self):
+        docrecord.PlcftxbxBkd(self).dump()
+
     def dumpFibRgFcLcb97(self, name):
         print '<%s type="FibRgFcLcb97" size="744 bytes">' % name
         self.__dumpFibRgFcLcb97()
+        print '</%s>' % name
+
+    def dumpFibRgFcLcb2000(self, name):
+        print '<%s type="FibRgFcLcb2000" size="864 bytes">' % name
+        self.__dumpFibRgFcLcb2000()
+        print '</%s>' % name
+
+    def dumpFibRgFcLcb2002(self, name):
+        print '<%s type="FibRgFcLcb2002" size="1088 bytes">' % name
+        self.__dumpFibRgFcLcb2002()
+        print '</%s>' % name
+
+    def dumpFibRgFcLcb2003(self, name):
+        print '<%s type="FibRgFcLcb2003" size="1312 bytes">' % name
+        self.__dumpFibRgFcLcb2003()
+        print '</%s>' % name
+
+    def dumpFibRgFcLcb2007(self, name):
+        print '<%s type="FibRgFcLcb2007" size="1464 bytes">' % name
+        self.__dumpFibRgFcLcb2007()
         print '</%s>' % name
 
     def __dumpFibRgFcLcb2000(self):
@@ -657,21 +798,174 @@ class WordDocumentStream(DOCDirStream):
         for i in fields:
             self.printAndSet(i, self.readuInt32())
 
-    def dumpFibRgFcLcb2002(self, name):
-        print '<%s type="FibRgFcLcb2002" size="744 bytes">' % name
+    def __dumpFibRgFcLcb2003(self):
         self.__dumpFibRgFcLcb2002()
-        print '</%s>' % name
+        fields = [
+            "fcHplxsdr",
+            "lcbHplxsdr",
+            "fcSttbfBkmkSdt",
+            "lcbSttbfBkmkSdt",
+            "fcPlcfBkfSdt",
+            "lcbPlcfBkfSdt",
+            "fcPlcfBklSdt",
+            "fcCustomXForm",
+            "lcbCustomXForm",
+            "fcSttbfBkmkProt",
+            "lcbSttbfBkmkProt",
+            "fcPlcfBkfProt",
+            "lcbPlcfBkfProt",
+            "fcPlcfBklProt",
+            "lcbPlcfBklProt",
+            "fcSttbProtUser",
+            "lcbSttbProtUser",
+            "fcUnused",
+            "lcbUnused",
+            "fcPlcfpmiOld",
+            "lcbPlcfpmiOld",
+            "fcPlcfpmiOldInline",
+            "lcbPlcfpmiOldInline",
+            "fcPlcfpmiNew",
+            "lcbPlcfpmiNew",
+            "fcPlcfpmiNewInline",
+            "lcbPlcfpmiNewInline",
+            "fcPlcflvcOld",
+            "lcbPlcflvcOld",
+            "lcbPlcflvcOldInline",
+            "fcPlcflvcNew",
+            "lcbPlcflvcNew",
+            "fcPlcflvcNewInline",
+            "lcbPlcflvcNewInline",
+            "fcPgdMother",
+            "lcbPgdMother",
+            "fcBkdMother",
+            "lcbBkdMother",
+            "fcAfdMother",
+            "lcbAfdMother",
+            "fcPgdFtn",
+            "lcbPgdFtn",
+            "fcBkdFtn",
+            "lcbBkdFtn",
+            "fcAfdFtn",
+            "lcbAfdFtn",
+            "fcPgdEdn",
+            "lcbPgdEdn",
+            "fcBkdEdn",
+            "lcbBkdEdn",
+            "fcAfdEdn",
+            "fcAfd",
+            "lcbAfd",
+                ]
+        for i in fields:
+            self.printAndSet(i, self.readuInt32())
 
-    def __findText(self, plcPcd, cp):
-        """Find the largest i such that plcPcd.aCp[i] <= cp."""
-        for i in range(len(plcPcd.aCp)):
-            if plcPcd.aCp[i] <= cp:
-                index = i
-        return index
+    def __dumpFibRgFcLcb2007(self):
+        self.__dumpFibRgFcLcb2003()
+        fields = [
+            "fcPlcfmthd",
+            "lcbPlcfmthd",
+            "fcSttbfBkmkMoveFrom",
+            "lcbSttbfBkmkMoveFrom",
+            "fcPlcfBkfMoveFrom",
+            "lcbPlcfBkfMoveFrom",
+            "fcPlcfBklMoveFrom",
+            "lcbPlcfBklMoveFrom",
+            "fcSttbfBkmkMoveTo",
+            "lcbSttbfBkmkMoveTo",
+            "fcPlcfBkfMoveTo",
+            "lcbPlcfBkfMoveTo",
+            "fcPlcfBklMoveTo",
+            "lcbPlcfBklMoveTo",
+            "fcUnused1",
+            "lcbUnused1",
+            "fcUnused2",
+            "lcbUnused2",
+            "fcUnused3",
+            "lcbUnused3",
+            "lcbSttbfBkmkArto",
+            "fcPlcfBkfArto",
+            "lcbPlcfBkfArto",
+            "fcPlcfBklArto",
+            "lcbPlcfBklArto",
+            "fcArtoData",
+            "lcbArtoData",
+            "fcUnused4",
+            "lcbUnused4",
+            "fcUnused5",
+            "lcbUnused5",
+            "fcUnused6",
+            "lcbUnused6",
+            "fcOssTheme",
+            "lcbOssTheme",
+            "fcColorSchemeMapping",
+            "lcbColorSchemeMapping",
+                ]
+        for i in fields:
+            self.printAndSet(i, self.readuInt32())
 
-    def retrieveText(self, start, end, logicalLength = False):
+    def retrieveOffset(self, start, end):
+        """Retrieves text, defined by raw byte offsets."""
+
+        startCp = self.__offsetToCP(start)
+        endCp = self.__offsetToCP(end)
+        if startCp is None or endCp is None:
+            return ""
+        return self.retrieveCPs(startCp, endCp)
+
+    def __offsetToCP(self, offset):
         plcPcd = self.clx.pcdt.plcPcd
-        idx = self.__findText(plcPcd, start)
-        return plcPcd.aPcd[idx].fc.getTransformedValue(start, end, logicalPositions = False, logicalLength = logicalLength)
+        for i in range(len(plcPcd.ranges)):
+            start, end = plcPcd.ranges[i]
+            # Count offset of the last-but-one CP, the last CP is in fact not included in the range.
+            end -= 1
+            startOffset, compressed = self.__cpToOffset(start)
+            endOffset = self.__cpToOffset(end)[0]
+            if compressed:
+                endOffset += 1
+            else:
+                endOffset += 2
+            if offset >= startOffset and offset <= endOffset:
+                if compressed:
+                    divider = 1
+                else:
+                    divider = 2
+                return (start + ((offset - startOffset) / divider))
+
+    def __cpToOffset(self, cp):
+        """Implements 2.4.1 Retrieving Text."""
+        plcPcd = self.clx.pcdt.plcPcd
+        index = bisect.bisect_right(plcPcd.aCp, cp) - 1
+        aPcd = plcPcd.aPcd[index]
+        fcCompressed = aPcd.fc
+        if fcCompressed.fCompressed == 1:
+            pos = (fcCompressed.fc/2) + (cp - plcPcd.aCp[index])
+            return pos, True
+        else:
+            pos = fcCompressed.fc + 2 * (cp - plcPcd.aCp[index])
+            return pos, False
+
+    def retrieveCP(self, cp):
+        pos, compressed = self.__cpToOffset(cp)
+        if compressed:
+            return globals.encodeName(self.bytes[pos])
+        else:
+            return globals.encodeName(self.bytes[pos:pos+2].decode('utf-16'), lowOnly = True)
+
+    def retrieveCPs(self, start, end):
+        """Retrieves a range of characters."""
+        if not len(self.clx.pcdt.plcPcd.aPcd):
+            print '<info what="clx.pcdt.plcPcd.aPcd is empty, probably corrupted document"/>'
+            return ""
+        ret = []
+        i = start
+        while i < end:
+            ret.append(self.retrieveCP(i))
+            i += 1
+        return "".join(ret)
+
+    def getHeaderOffset(self):
+        return self.ccpText + self.ccpFtn
+
+    def getCommentOffset(self):
+        return self.getHeaderOffset() + self.ccpHdd
 
 # vim:set filetype=python shiftwidth=4 softtabstop=4 expandtab:
