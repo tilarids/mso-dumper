@@ -342,18 +342,6 @@ class FOPT:
             self.I = (prop.value & 0x00080000) != 0
             self.J = (prop.value & 0x00100000) != 0
 
-        def __parseBytes(self, prop):
-            self.A = (prop.value & 0x00000001) != 0
-            self.B = (prop.value & 0x00000002) != 0
-            self.C = (prop.value & 0x00000004) != 0
-            self.D = (prop.value & 0x00000008) != 0
-            self.E = (prop.value & 0x00000010) != 0
-            self.F = (prop.value & 0x00010000) != 0
-            self.G = (prop.value & 0x00020000) != 0
-            self.H = (prop.value & 0x00040000) != 0
-            self.I = (prop.value & 0x00080000) != 0
-            self.J = (prop.value & 0x00100000) != 0
-
         def appendLines (self, recHdl, prop, level):
             self.__parseBytes(prop)
             recHdl.appendLineBoolean(indent(level) + "fit shape to text",     self.B)
@@ -1059,16 +1047,23 @@ class FClientData:
 
 class FClientTextbox:
     def __init__ (self, strm):
-        self.data = strm.readUnsignedInt(4)
+        # can be None
+        if strm.pos == strm.size:
+            self.data = None
+        else:
+            self.data = strm.readUnsignedInt(4)
 
     def appendLines (self, recHdl, rh):
         recHdl.appendLine("FClientTextbox content")
-        recHdl.appendLine("  data: 0x%8.8X"%self.data)
+        recHdl.appendLine(("  data: 0x%8.8X"%self.data) if not self.data is None else "  data is None")
 
     def dumpXml(self, recHdl, model, rh):
         recHdl.appendLine('<clientTextbox type="OfficeArtClientTextbox">')
-        recHdl.appendLine('<data value="0x%8.8X"/>' % self.data)
+        recHdl.appendLine(('<data value="0x%8.8X"/>' % self.data) if not self.data is None else '<data value="None"/>')
         recHdl.appendLine('</clientTextbox>')
+
+    def dumpData(self, rh):
+        return ('fclient-text-box', {'data': self.data})
 
 class BStoreContainerFileBlock:
     def __init__(self, parent):
